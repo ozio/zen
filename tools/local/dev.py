@@ -32,6 +32,8 @@ def parser() -> argparse.ArgumentParser:
     compile_ = sub.add_parser("build", help="build source with pinned tools and updater disabled")
     compile_.add_argument("--ui", action="store_true", help="mach build faster; requires a prior native build")
     compile_.add_argument("--jobs", type=int, default=8, help="parallel build jobs (default: 8)")
+    compile_.add_argument("--disk-reserve-gib", type=int, default=15,
+                          help="minimum free GiB (default: 15; 4-14 requires a clean, native-compatible incremental baseline)")
     archive = sub.add_parser("package", help="mach package then seal standalone artifact at its committed source SHA")
     archive.add_argument("--bundle", help="select a built app/directory below engine when multiple object dirs exist")
     archive.add_argument("--signing-identity", help="macOS codesigning identity: exact certificate SHA-1 or '-' for local ad hoc (default)")

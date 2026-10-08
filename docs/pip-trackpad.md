@@ -12,7 +12,7 @@ Cocoa sends synchronous trusted chrome-only start/end/cancel events exclusively 
 
 The ChromeOnly `WheelEvent.mozIsMomentum` getter exposes Gecko's existing native momentum bit. The adapter consumes the OS tail without applying it, because the portable controller already supplies inertia. A new touch, click, cancellation, manual resize, fullscreen transition, disabled preference or close cancels motion. Animation generations prevent a cancelled queued callback from moving the window.
 
-Each gesture captures the current monitor's available bounds, including negative origins and Dock/menu exclusions. Geometry uses outer window dimensions in CSS screen coordinates. Native resize results are read back before positioning. A new gesture re-evaluates the current monitor. Display reconfiguration and hardware feel require real-device validation.
+Each gesture captures the current monitor's available bounds, including negative origins and Dock/menu exclusions. Geometry uses outer window dimensions in CSS screen coordinates. Fractional target sizes accumulate across asynchronous/coalesced AppKit resize operations; native resize notifications check the actual outer bounds without discarding newer pinch samples. A new gesture re-evaluates the current monitor. Display reconfiguration and hardware feel require real-device validation.
 
 ## Initial tuning
 

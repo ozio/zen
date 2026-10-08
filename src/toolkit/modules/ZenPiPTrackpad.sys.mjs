@@ -28,6 +28,7 @@ export class ZenPiPTrackpad {
     this.destroyed = false;
     this.fullscreenPending = false;
     this.expectedSize = null;
+    this.resizeRequests = [];
     this.motion = new ZenPiPGestureMotion(
       {
         now: () => window.performance.now(),
@@ -48,31 +49,37 @@ export class ZenPiPTrackpad {
           const height = Math.round(rect.height);
           if (window.outerWidth !== width || window.outerHeight !== height) {
             this.expectedSize = { width, height };
+            this.resizeRequests.push(this.expectedSize);
+            // AppKit can coalesce many input samples into one native resize.
+            if (this.resizeRequests.length > 64) {
+              this.resizeRequests.shift();
+            }
             window.resizeTo(width, height);
           }
-          // resizeTo can be constrained by the native aspect/minimum-size lock.
-          // Position using the actual outer size, including on a Retina screen.
+          // Keep desired fractional geometry across asynchronous native resize.
+          // Reading outerWidth here can still return the PREVIOUS size and
+          // discard the next pinch sample. Actual bounds are checked on resize.
           const bounds = this.motion.bounds;
           const x = Math.max(
             bounds.x,
-            Math.min(rect.x, bounds.x + bounds.width - window.outerWidth),
+            Math.min(rect.x, bounds.x + bounds.width - rect.width),
           );
           const y = Math.max(
             bounds.y,
-            Math.min(rect.y, bounds.y + bounds.height - window.outerHeight),
+            Math.min(rect.y, bounds.y + bounds.height - rect.height),
           );
           window.moveTo(Math.round(x), Math.round(y));
           onMove();
           return {
             x,
             y,
-            width: window.outerWidth,
-            height: window.outerHeight,
+            width: rect.width,
+            height: rect.height,
           };
         },
         requestFrame: (callback) =>
           window.requestAnimationFrame((time) => {
-            if (this.enabled) {
+            if (this.enabled && this.sameScreenBounds) {
               callback(time);
             } else {
               this.motion.stop();
@@ -119,6 +126,18 @@ export class ZenPiPTrackpad {
     );
   }
 
+  get sameScreenBounds() {
+    const bounds = this.motion.bounds;
+    const screen = this.window.screen;
+    return (
+      !bounds ||
+      (screen.availLeft === bounds.x &&
+        screen.availTop === bounds.y &&
+        screen.availWidth === bounds.width &&
+        screen.availHeight === bounds.height)
+    );
+  }
+
   observe() {
     if (!this.enabled) {
       this.motion.stop();
@@ -152,16 +171,52 @@ export class ZenPiPTrackpad {
     }
     if (event.type === "pointerdown") {
       this.motion.stop();
+      this.expectedSize = null;
+      this.resizeRequests = [];
       return;
     }
     if (event.type === "resize") {
-      if (
-        this.expectedSize &&
-        Math.abs(this.window.outerWidth - this.expectedSize.width) <= 2 &&
-        Math.abs(this.window.outerHeight - this.expectedSize.height) <= 2
-      ) {
-        // Multiple native resize notifications can describe the same result.
+      const matches = (size) =>
+        size &&
+        Math.abs(this.window.outerWidth - size.width) <= 2 &&
+        Math.abs(this.window.outerHeight - size.height) <= 2;
+      const index = this.resizeRequests.findIndex(matches);
+      const owned = index !== -1 || matches(this.expectedSize);
+      if (owned) {
+        if (index !== -1) {
+          this.resizeRequests.splice(0, index + 1);
+        }
       } else {
+        this.resizeRequests = [];
+        this.expectedSize = null;
+        this.motion.stop();
+      }
+      // Native aspect/minimum-size constraints are authoritative once reported.
+      // Clamp their actual outer rectangle without replacing the newer target
+      // of a continuous pinch with an intermediate resize acknowledgement.
+      const bounds = this.motion.bounds;
+      if (owned && bounds && this.enabled && this.sameScreenBounds) {
+        const x = Math.max(
+          bounds.x,
+          Math.min(
+            this.window.screenX,
+            bounds.x + bounds.width - this.window.outerWidth,
+          ),
+        );
+        const y = Math.max(
+          bounds.y,
+          Math.min(
+            this.window.screenY,
+            bounds.y + bounds.height - this.window.outerHeight,
+          ),
+        );
+        if (x !== this.window.screenX || y !== this.window.screenY) {
+          this.window.moveTo(Math.round(x), Math.round(y));
+          this.motion.rect.x = x;
+          this.motion.rect.y = y;
+        }
+      }
+      if (!this.sameScreenBounds) {
         this.motion.stop();
       }
       return;
@@ -217,6 +272,7 @@ export class ZenPiPTrackpad {
       return;
     }
     this.destroyed = true;
+    this.resizeRequests = [];
     this.motion.stop();
     if (this.platform === "macosx") {
       for (const type of EVENTS) {

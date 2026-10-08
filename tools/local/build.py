@@ -147,12 +147,68 @@ def require_prior_native_build(ctx: Context) -> None:
     raise DevError("--ui needs a prior successful full CLI build on this host and existing native object tree")
 
 
+def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int) -> Optional[str]:
+    """A lower explicit reserve is allowed only for a native-compatible rebuild.
+
+    It still runs the full mach build. Native source/preferences/configuration
+    changes, tool changes and an unprepared tree retain the normal 15 GiB floor.
+    """
+    if not 4 <= reserve <= 1024:
+        raise DevError("Build disk reserve must be between 4 and 1024 GiB")
+    if reserve >= 15:
+        return None
+    if ctx.snapshot()["status"]:
+        raise DevError("A reduced reserve requires clean, committed source")
+    objects = native_object_dirs(ctx)
+    config = ctx.root / "engine" / "mozconfig"
+    if not objects or not config.is_file():
+        raise DevError("A reduced reserve requires an existing native build")
+    roots = ("src", "prefs", "configs", "surfer.json", ".nvmrc", ".rust-toolchain",
+             ".python-version", "package.json", "package-lock.json")
+    ui_suffixes = (".js", ".mjs", ".css", ".ftl", ".html", ".xhtml", ".svg")
+    for path in sorted((ctx.local / "builds").glob("*/build.json"),
+                       key=lambda p:p.stat().st_mtime, reverse=True):
+        ctx.managed(path)
+        receipt = read_json(path)
+        if not (receipt.get("result") == "pass" and receipt.get("ui_only") is False
+                and receipt.get("source_snapshot", {}).get("status") == ""
+                and receipt.get("platform") == host_platform()
+                and receipt.get("engine") == str(ctx.root / "engine")
+                and receipt.get("object_dirs") == objects
+                and receipt.get("toolchains") == chain
+                and receipt.get("mozconfig_sha256") == sha256_file(config)):
+            continue
+        sha = require_sha(receipt.get("source_sha"))
+        result = ctx.git("diff", "--name-only", sha, "HEAD", "--", *roots, check=False)
+        if result.returncode:
+            continue
+        compatible = True
+        for name in result.stdout.splitlines():
+            source = ctx.root / name
+            if not name.startswith("src/") or not source.is_file():
+                compatible = False
+                break
+            if source.suffix == ".patch":
+                targets = re.findall(r"^\+\+\+ b/(.+)$", source.read_text(), re.MULTILINE)
+                if not targets or not all(t.endswith(ui_suffixes) for t in targets):
+                    compatible = False
+                    break
+            elif not name.endswith(ui_suffixes):
+                compatible = False
+                break
+        if compatible:
+            return sha
+    raise DevError("A reduced reserve needs a successful matching full build with unchanged native inputs; use 15 GiB")
+
+
 def build(ctx: Context, args: Any) -> Dict[str, Any]:
     if not 1 <= args.jobs <= 128:
         raise DevError("Build jobs must be between 1 and 128")
     chain = toolchains(ctx)
     env = build_env(ctx, chain)
-    ctx.free_space()
+    reserve = getattr(args, "disk_reserve_gib", 15)
+    baseline = incremental_disk_baseline(ctx, chain, reserve)
+    ctx.free_space(reserve * 1024 ** 3)
     mach = ctx.root / "engine" / "mach"
     no_symlink_ancestors(mach)
     if not mach.is_file():
@@ -177,6 +233,7 @@ def build(ctx: Context, args: Any) -> Dict[str, Any]:
                    "ui_only": args.ui, "platform": host_platform(), "toolchains": chain,
                    "engine": str(ctx.root / "engine"), "object_dirs": objects,
                    "mozconfig_sha256": sha256_file(ctx.root / "engine" / "mozconfig"),
+                   "disk_reserve_gib": reserve, "incremental_native_baseline": baseline,
                    "log": str(path)}
         name = "ui.json" if args.ui else "build.json"
         atomic_json(ctx.managed(ctx.local / "builds" / before["source_sha"] / name), receipt)

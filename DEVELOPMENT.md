@@ -136,6 +136,8 @@ The local configuration in [tools/local/build.py](tools/local/build.py) adds `ac
 
 The wrapper's `--jobs N` bounds compilation parallelism through the effective make flags. It uses `sccache` when an executable is available, including a bootstrapped copy, with `SCCACHE_CACHE_SIZE=4G` and its cache under `.zen-local/cache/sccache`. The supported configuration also uses it for Rust through `RUSTC_WRAPPER`. Check its actual use; do not assume a downloaded compiler is a compilation cache. Logs and cache state remain local.
 
+`build` normally requires 15 GiB free. For a prepared engine with only UI, test, documentation or local-tooling changes, `build --jobs 8 --disk-reserve-gib 4` explicitly lowers the reserve while still running the full CLI build. The wrapper requires clean committed source and a successful full-build baseline with the same host, native object tree, toolchain and effective configuration; it rejects new native patches, preference/build/version/dependency changes or missing baseline objects. The selected reserve and baseline are recorded in the build receipt. This option does not make a new engine or changed native inputs fit into 4 GiB; first/native-change builds retain the normal reserve. Keep additional room for packages and backups.
+
 After a matching full build, compatible JavaScript/CSS/XHTML-only work can use:
 
 ```sh
@@ -306,7 +308,7 @@ In the identified Playground, open `http://127.0.0.1:8765/translation`, right-cl
 
 All checks apply to the exact source SHA, package digest and host being promoted. Keep the underlying machine-local receipts in `.zen-local/`; the report must distinguish passed, failed and not run. Synthetic sites and values should be used for cookie/session/native-app demonstrations. Never record a personal cookie value, password or vault entry.
 
-The repository includes a [loopback fixture](tools/compatibility/probe_server.py) and [guarded probes](tools/compatibility/probe.py). Start the fixture in a separate terminal, install the separately sourced package bytes listed in `.zen-local/extensions/inventory.json`, and run the seed check in the verified playground:
+The repository includes a [loopback fixture](tools/compatibility/probe_server.py) and [guarded probes](tools/compatibility/probe.py). Its `/pip` page generates an animated local video for [PiP gesture validation](docs/pip-trackpad.md). Start the fixture in a separate terminal, install the separately sourced package bytes listed in `.zen-local/extensions/inventory.json`, and run the seed check in the verified playground:
 
 ```sh
 python tools/compatibility/probe_server.py --port 8765

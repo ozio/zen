@@ -418,3 +418,53 @@ test("own repeated resize notifications preserve a pinch; non-Mac adds no hooks"
     other.instance.destroy();
   }
 });
+
+test("rapid pinch samples accumulate while AppKit resize is still pending", () => {
+  const a = adapter();
+  const pending = [];
+  a.window.resizeTo = (width, height) => pending.push({ width, height });
+  for (let i = 0; i < 4; i++) {
+    a.event("wheel", { ctrlKey: true, deltaY: -12 });
+  }
+  close(a.instance.motion.rect.width, 320 * Math.exp(0.48));
+  assert.equal(pending.length, 4);
+  // Native intermediate and coalesced results cannot reset the desired size.
+  for (const size of [pending[0], pending.at(-1)]) {
+    a.window.outerWidth = size.width;
+    a.window.outerHeight = size.height;
+    a.event("resize");
+    assert.equal(a.instance.motion.phase, "pinch");
+    close(a.instance.motion.rect.width, 320 * Math.exp(0.48));
+  }
+  contained(a.instance.motion.rect);
+  a.instance.destroy();
+});
+
+test("subpixel pinch changes accumulate even before reaching a whole pixel", () => {
+  const a = adapter();
+  for (let i = 0; i < 20; i++) {
+    a.event("wheel", { ctrlKey: true, deltaY: -0.01 });
+  }
+  close(a.instance.motion.rect.width, 320 * Math.exp(0.002));
+  assert.equal(a.window.outerWidth, 321);
+  a.instance.destroy();
+});
+
+test("a changed work area cancels animation; manual relocation/resize stays put", () => {
+  const a = adapter();
+  a.event("MozZenPiPTrackpadStart");
+  a.h.at(40);
+  a.event("wheel", { deltaX: -40 });
+  a.event("MozZenPiPTrackpadEnd");
+  a.window.screen.availLeft = -1400;
+  const before = a.window.screenX;
+  a.h.tick();
+  assert.equal(a.window.screenX, before);
+  assert.equal(a.instance.motion.phase, "idle");
+  a.event("pointerdown");
+  a.window.screenX = -800;
+  a.window.outerWidth = 500;
+  a.event("resize");
+  assert.equal(a.window.screenX, -800);
+  a.instance.destroy();
+});
