@@ -242,6 +242,8 @@ function adapter(platform = "macosx") {
   let bool = true;
   const listeners = new Map(),
     observers = new Set();
+  const attributes = new Map();
+  const geometry = [];
   const window = {
     screenX: initial.x,
     screenY: initial.y,
@@ -249,7 +251,18 @@ function adapter(platform = "macosx") {
     outerHeight: 180,
     screen: { availLeft: 0, availTop: 25, availWidth: 1400, availHeight: 900 },
     performance: { now: () => h.now },
-    document: { fullscreenElement: null },
+    document: {
+      fullscreenElement: null,
+      hasFocus: () => false,
+      documentElement: {
+        setAttribute: (name, value) => attributes.set(name, value),
+        removeAttribute: (name) => attributes.delete(name),
+      },
+      elementFromPoint: (x, y) =>
+        x >= 0 && y >= 0 && x < window.outerWidth && y < window.outerHeight
+          ? { closest: () => false }
+          : null,
+    },
     closed: false,
     fullScreen: false,
     resizeTo(width, height) {
@@ -259,6 +272,13 @@ function adapter(platform = "macosx") {
     moveTo(x, y) {
       this.screenX = x;
       this.screenY = y;
+    },
+    moveResize(x, y, width, height) {
+      geometry.push({ x, y, width, height });
+      this.screenX = x;
+      this.screenY = y;
+      this.outerWidth = width;
+      this.outerHeight = height;
     },
     requestAnimationFrame: h.host.requestFrame,
     cancelAnimationFrame: h.host.cancelFrame,
@@ -301,6 +321,8 @@ function adapter(platform = "macosx") {
     event,
     listeners,
     observers,
+    attributes,
+    geometry,
     disable() {
       bool = false;
       instance.observe();
@@ -324,6 +346,7 @@ test("mac adapter accumulates subpixel deltas and ignores native OS momentum", (
 test("native Control pixel pinch preserves size ratio and never pans", () => {
   const a = adapter();
   a.event("wheel", { ctrlKey: true, deltaY: -20 });
+  a.h.tick();
   close(a.window.outerWidth / a.window.outerHeight, 16 / 9, 0.01);
   close(a.window.screenX + a.window.outerWidth / 2, 560, 1);
   a.event("MozZenPiPTrackpadEnd");
@@ -405,6 +428,7 @@ test("normal and pending fullscreen reject wheel; exiting permits gestures again
 test("own repeated resize notifications preserve a pinch; non-Mac adds no hooks", () => {
   const a = adapter();
   a.event("wheel", { ctrlKey: true, deltaY: -20 });
+  a.h.tick();
   a.event("resize");
   a.event("resize");
   assert.equal(a.instance.motion.phase, "pinch");
@@ -422,19 +446,25 @@ test("own repeated resize notifications preserve a pinch; non-Mac adds no hooks"
 test("rapid pinch samples accumulate while AppKit resize is still pending", () => {
   const a = adapter();
   const pending = [];
-  a.window.resizeTo = (width, height) => pending.push({ width, height });
+  a.window.moveResize = (x, y, width, height) =>
+    pending.push({ x, y, width, height });
   for (let i = 0; i < 4; i++) {
     a.event("wheel", { ctrlKey: true, deltaY: -12 });
   }
   close(a.instance.motion.rect.width, 320 * Math.exp(0.48));
-  assert.equal(pending.length, 4);
+  assert.equal(pending.length, 0);
+  a.h.tick();
+  assert.equal(pending.length, 1);
+  a.event("wheel", { ctrlKey: true, deltaY: -12 });
+  a.h.tick();
+  assert.equal(pending.length, 2);
   // Native intermediate and coalesced results cannot reset the desired size.
   for (const size of [pending[0], pending.at(-1)]) {
     a.window.outerWidth = size.width;
     a.window.outerHeight = size.height;
     a.event("resize");
     assert.equal(a.instance.motion.phase, "pinch");
-    close(a.instance.motion.rect.width, 320 * Math.exp(0.48));
+    close(a.instance.motion.rect.width, 320 * Math.exp(0.6));
   }
   contained(a.instance.motion.rect);
   a.instance.destroy();
@@ -446,8 +476,117 @@ test("subpixel pinch changes accumulate even before reaching a whole pixel", () 
     a.event("wheel", { ctrlKey: true, deltaY: -0.01 });
   }
   close(a.instance.motion.rect.width, 320 * Math.exp(0.002));
+  a.h.tick();
   assert.equal(a.window.outerWidth, 321);
   a.instance.destroy();
+});
+
+function nativeStart(a, pinch = false, fields = {}) {
+  return a.event("MozZenPiPTrackpadStart", {
+    cancelable: true,
+    ctrlKey: pinch,
+    clientX: 160,
+    clientY: 90,
+    target: a.window.document,
+    ...fields,
+  });
+}
+
+test("an owned native pan keeps its final delta and inertia after the pointer exits PiP", () => {
+  const a = adapter();
+  assert.equal(nativeStart(a).consumed, true);
+  for (let i = 1; i <= 4; i++) {
+    a.h.at(i * 12);
+    // Direct chrome routing has no hit-tested element at this outside point.
+    a.event("MozZenPiPTrackpadPan", {
+      clientX: -200,
+      clientY: -200,
+      target: a.window.document,
+      deltaX: -25,
+      deltaY: -25,
+    });
+  }
+  a.event("MozZenPiPTrackpadEnd", { cancelable: true });
+  assert.equal(a.instance.motion.phase, "snap");
+  a.h.settle();
+  assert.equal(a.window.screenX, 1080);
+  assert.equal(a.window.screenY, 745);
+  assert.equal(a.attributes.size, 0);
+});
+
+test("native magnification needs no focus and applies the exact incremental scale", () => {
+  const a = adapter();
+  assert.equal(a.window.document.hasFocus(), false);
+  assert.equal(nativeStart(a, true).consumed, true);
+  for (const magnification of [0.1, 0.05, -0.02]) {
+    a.event("MozZenPiPTrackpadPinch", {
+      ctrlKey: true,
+      deltaY: magnification,
+      target: a.window.document,
+    });
+  }
+  assert.equal(a.geometry.length, 0);
+  a.h.tick();
+  assert.equal(a.geometry.length, 1);
+  close(a.window.outerWidth, Math.round(320 * 1.1 * 1.05 * 0.98));
+  close(a.window.screenX + a.window.outerWidth / 2, 560, 1);
+  close(a.window.screenY + a.window.outerHeight / 2, 390, 1);
+  assert.equal(a.window.document.hasFocus(), false);
+});
+
+test("release flushes the last pending pinch rectangle; cancellation never applies it later", () => {
+  const a = adapter();
+  nativeStart(a, true);
+  a.event("MozZenPiPTrackpadPinch", { ctrlKey: true, deltaY: 0.25 });
+  a.event("MozZenPiPTrackpadEnd", { cancelable: true });
+  assert.equal(a.window.outerWidth, 400);
+  assert.equal(a.geometry.length, 1);
+  a.h.tick();
+  assert.equal(a.geometry.length, 1);
+  nativeStart(a, true);
+  a.event("MozZenPiPTrackpadPinch", { ctrlKey: true, deltaY: 0.25 });
+  a.event("pointerdown");
+  a.h.tick();
+  assert.equal(a.window.outerWidth, 400);
+  assert.equal(a.attributes.size, 0);
+  assert.equal(a.event("MozZenPiPTrackpadPinch", { deltaY: 1 }).consumed, undefined);
+});
+
+test("native capture rejects an outside start, controls, disabled/fullscreen and untrusted input", () => {
+  const outside = adapter();
+  assert.equal(nativeStart(outside, false, { clientX: -1 }).consumed, undefined);
+  assert.equal(outside.attributes.size, 0);
+  const control = adapter();
+  control.window.document.elementFromPoint = () => ({ closest: () => true });
+  assert.equal(nativeStart(control).consumed, undefined);
+  for (const block of [
+    a => a.disable(),
+    a => { a.window.fullScreen = true; },
+    a => a.instance.suspendForFullscreen(),
+  ]) {
+    const a = adapter();
+    block(a);
+    assert.equal(nativeStart(a, true).consumed, undefined);
+    assert.equal(a.attributes.size, 0);
+  }
+  assert.equal(nativeStart(adapter(), false, { isTrusted: false }).consumed, undefined);
+});
+
+test("native capture rejects a mismatched gesture and ends ownership on disable, close or fullscreen", () => {
+  for (const block of [
+    a => a.disable(),
+    a => a.instance.suspendForFullscreen(),
+    a => a.event("unload"),
+  ]) {
+    const a = adapter();
+    nativeStart(a);
+    assert.equal(a.event("MozZenPiPTrackpadPinch", { deltaY: 0.5 }).consumed, undefined);
+    assert.equal(a.window.outerWidth, 320);
+    block(a);
+    assert.equal(a.attributes.size, 0);
+    assert.equal(a.event("MozZenPiPTrackpadPan", { deltaX: -100 }).consumed, undefined);
+    assert.equal(a.window.screenX, 400);
+  }
 });
 
 test("a changed work area cancels animation; manual relocation/resize stays put", () => {

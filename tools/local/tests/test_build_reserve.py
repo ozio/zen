@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build import incremental_disk_baseline
@@ -61,6 +62,54 @@ class BuildReserveTests(unittest.TestCase):
         self.commit()
         with self.assertRaises(DevError):
             incremental_disk_baseline(self.ctx, self.chain, 4)
+
+    def cocoa_patch(self, target="widget/cocoa/nsCocoaWindow.mm"):
+        self.write("src/widget/cocoa/native.patch",
+                   "--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-old\n+new\n" % (target, target))
+        self.commit()
+
+    def cocoa_baseline(self):
+        receipt = json.loads(self.receipt.read_text())
+        receipt["platform"] = {"system": "Darwin", "machine": "arm64"}
+        self.receipt.write_text(json.dumps(receipt))
+        return patch("build.host_platform", return_value=receipt["platform"])
+
+    def test_explicit_cocoa_incremental_requires_eight_gib_and_matching_full_baseline(self):
+        self.cocoa_patch()
+        with self.cocoa_baseline():
+            self.assertEqual(incremental_disk_baseline(self.ctx, self.chain, 8,
+                                                      native_incremental=True), self.base)
+            with self.assertRaises(DevError):
+                incremental_disk_baseline(self.ctx, self.chain, 8)
+            with self.assertRaises(DevError):
+                incremental_disk_baseline(self.ctx, self.chain, 7, native_incremental=True)
+            with self.assertRaises(DevError):
+                incremental_disk_baseline(self.ctx, {"pins": {"rust": "changed"}}, 8,
+                                          native_incremental=True)
+
+    def test_other_native_patch_targets_are_refused_even_under_cocoa_filename(self):
+        self.cocoa_patch("dom/bindings/native.cpp")
+        with self.cocoa_baseline(), self.assertRaises(DevError):
+            incremental_disk_baseline(self.ctx, self.chain, 8, native_incremental=True)
+
+    def test_idl_and_configuration_changes_still_require_normal_reserve(self):
+        self.cocoa_patch()
+        self.write("src/dom/native.patch", "--- a/dom/webidl/Window.webidl\n+++ b/dom/webidl/Window.webidl\n@@ -1 +1 @@\n-old\n+new\n")
+        self.commit()
+        with self.cocoa_baseline(), self.assertRaises(DevError):
+            incremental_disk_baseline(self.ctx, self.chain, 8, native_incremental=True)
+
+    def test_cocoa_incremental_rejects_non_mac_platform(self):
+        self.cocoa_patch()
+        with patch("build.host_platform", return_value={"system": "Linux", "machine": "x86_64"}), self.assertRaises(DevError):
+            incremental_disk_baseline(self.ctx, self.chain, 8, native_incremental=True)
+
+    def test_cocoa_incremental_rejects_ui_build_and_excess_parallelism(self):
+        from types import SimpleNamespace
+        from build import build
+        for ui, jobs in ((True, 1), (False, 3)):
+            with self.assertRaisesRegex(DevError, "full mach build"):
+                build(self.ctx, SimpleNamespace(ui=ui, jobs=jobs, native_incremental=True))
 
     def test_preferences_need_normal_reserve(self):
         self.write("prefs/zen/test.yaml", "- name: zen.test\n  value: true\n")

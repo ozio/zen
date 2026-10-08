@@ -74,7 +74,12 @@ def bootstrap(ctx: Context, args: Any) -> Dict[str, Any]:
     engine = ctx.root / "engine"
     if not args.skip_engine and engine.is_dir() and any(engine.iterdir()) and not (engine / "toolkit" / "moz.build").is_file():
         raise DevError("Nonempty engine is incomplete; preserve/inspect it before retrying source extraction")
-    ctx.free_space()
+    reserve = getattr(args, "disk_reserve_gib", 15)
+    native_incremental = getattr(args, "native_incremental", False)
+    if native_incremental and (args.skip_engine or not args.skip_system_bootstrap):
+        raise DevError("--native-incremental import requires an existing engine and --skip-system-bootstrap")
+    baseline = incremental_disk_baseline(ctx, chain, reserve, native_incremental=native_incremental)
+    ctx.free_space(reserve * 1024 ** 3)
     if platform.system() == "Darwin" and not args.skip_engine and not shutil.which("gtar", path=env["PATH"]):
         raise DevError("Surfer extraction requires GNU tar (gtar) on macOS. Install gnu-tar first.")
     node = Path(chain["node"]["path"])
@@ -113,6 +118,8 @@ def bootstrap(ctx: Context, args: Any) -> Dict[str, Any]:
             configure(ctx, chain, env, 8)
         receipt = {"schema_version": 1, "created_at": utc_now(), "source_sha": ctx.sha(),
                    "toolchains": chain, "engine": not args.skip_engine,
+                   "disk_reserve_gib": reserve, "incremental_native_baseline": baseline,
+                   "native_incremental": native_incremental,
                    "system_bootstrap": not args.skip_engine and not args.skip_system_bootstrap}
         if not args.skip_engine:
             receipt["source_download"] = source_download
@@ -147,14 +154,21 @@ def require_prior_native_build(ctx: Context) -> None:
     raise DevError("--ui needs a prior successful full CLI build on this host and existing native object tree")
 
 
-def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int) -> Optional[str]:
+def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int,
+                              *, native_incremental: bool = False) -> Optional[str]:
     """A lower explicit reserve is allowed only for a native-compatible rebuild.
 
     It still runs the full mach build. Native source/preferences/configuration
     changes, tool changes and an unprepared tree retain the normal 15 GiB floor.
+    An explicit macOS-only exception permits the three Cocoa window/router
+    files with >=8 GiB and a full matching object tree. Build still runs full
+    mach dependency analysis; IDL, Rust, prefs, configuration and other native
+    targets are refused, rather than guessing their compilation footprint.
     """
     if not 4 <= reserve <= 1024:
         raise DevError("Build disk reserve must be between 4 and 1024 GiB")
+    if native_incremental and (reserve < 8 or host_platform()["system"] != "Darwin"):
+        raise DevError("Cocoa incremental mode requires macOS and at least 8 GiB")
     if reserve >= 15:
         return None
     if ctx.snapshot()["status"]:
@@ -166,6 +180,8 @@ def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int)
     roots = ("src", "prefs", "configs", "surfer.json", ".nvmrc", ".rust-toolchain",
              ".python-version", "package.json", "package-lock.json")
     ui_suffixes = (".js", ".mjs", ".css", ".ftl", ".html", ".xhtml", ".svg")
+    cocoa_targets = {"widget/cocoa/nsCocoaWindow.h", "widget/cocoa/nsCocoaWindow.mm",
+                     "widget/cocoa/nsAppShell.mm"}
     for path in sorted((ctx.local / "builds").glob("*/build.json"),
                        key=lambda p:p.stat().st_mtime, reverse=True):
         ctx.managed(path)
@@ -190,7 +206,9 @@ def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int)
                 break
             if source.suffix == ".patch":
                 targets = re.findall(r"^\+\+\+ b/(.+)$", source.read_text(), re.MULTILINE)
-                if not targets or not all(t.endswith(ui_suffixes) for t in targets):
+                if not targets or not all(t.endswith(ui_suffixes) or
+                                          (native_incremental and t in cocoa_targets)
+                                          for t in targets):
                     compatible = False
                     break
             elif not name.endswith(ui_suffixes):
@@ -204,10 +222,15 @@ def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int)
 def build(ctx: Context, args: Any) -> Dict[str, Any]:
     if not 1 <= args.jobs <= 128:
         raise DevError("Build jobs must be between 1 and 128")
+    native_incremental = getattr(args, "native_incremental", False)
+    if native_incremental and (args.ui or args.jobs > 2):
+        raise DevError("Cocoa incremental mode requires a full mach build with at most 2 jobs")
     chain = toolchains(ctx)
     env = build_env(ctx, chain)
     reserve = getattr(args, "disk_reserve_gib", 15)
-    baseline = incremental_disk_baseline(ctx, chain, reserve)
+    baseline = incremental_disk_baseline(ctx, chain, reserve, native_incremental=native_incremental)
+    if native_incremental:
+        env["SCCACHE_CACHE_SIZE"] = "128M"
     ctx.free_space(reserve * 1024 ** 3)
     mach = ctx.root / "engine" / "mach"
     no_symlink_ancestors(mach)
@@ -234,6 +257,7 @@ def build(ctx: Context, args: Any) -> Dict[str, Any]:
                    "engine": str(ctx.root / "engine"), "object_dirs": objects,
                    "mozconfig_sha256": sha256_file(ctx.root / "engine" / "mozconfig"),
                    "disk_reserve_gib": reserve, "incremental_native_baseline": baseline,
+                   "native_incremental": native_incremental,
                    "log": str(path)}
         name = "ui.json" if args.ui else "build.json"
         atomic_json(ctx.managed(ctx.local / "builds" / before["source_sha"] / name), receipt)

@@ -1,4 +1,5 @@
 diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
+index 1af56a5e..2c36be98 100644
 --- a/widget/cocoa/nsCocoaWindow.mm
 +++ b/widget/cocoa/nsCocoaWindow.mm
 @@ -38,6 +38,7 @@
@@ -9,16 +10,123 @@ diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
  #include "nsDeviceContext.h"
  #include "nsDocShell.h"
  #include "nsDragService.h"
-@@ -87,6 +88,8 @@
+@@ -74,6 +75,7 @@
+ 
+ #import <objc/runtime.h>
+ #include <algorithm>
++#include <cmath>
+ #include "mozilla/AutoRestore.h"
+ #include "mozilla/BasicEvents.h"
+ #include "mozilla/Maybe.h"
+@@ -87,9 +89,12 @@
  #include "mozilla/StaticPrefs_gfx.h"
  #include "mozilla/StaticPrefs_ui.h"
  #include "mozilla/StaticPrefs_widget.h"
 +#include "mozilla/StaticPrefs_zen.h"
-+#include "mozilla/nsZenDragAndDrop.h"
  #include "mozilla/WritingModes.h"
  #include "mozilla/dom/Document.h"
++#include "mozilla/dom/WheelEvent.h"
  #include "mozilla/layers/CompositorBridgeChild.h"
-@@ -1333,6 +1336,110 @@
++#include "mozilla/nsZenDragAndDrop.h"
+ #include "mozilla/widget/Screen.h"
+ 
+ #ifdef ACCESSIBILITY
+@@ -576,7 +581,7 @@ static void ManipulateViewWithoutNeedingDisplay(NSView* aView,
+ 
+   NSEvent* event = [NSEvent eventWithCGEvent:cgEvent];
+   [event setValue:[mChildView window] forKey:@"_window"];
+-  [mChildView scrollWheel:event];
++  [NSApp sendEvent:event];
+ 
+   CFRelease(cgEvent);
+   return NS_OK;
+@@ -584,6 +589,85 @@ static void ManipulateViewWithoutNeedingDisplay(NSView* aView,
+   NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
+ }
+ 
++// NSEvent has no public magnify-event factory. This privileged Gecko testing
++// API supplies the same accessors used by the real Cocoa router, without OS
++// event posting or private multitouch APIs. It does not emulate hardware.
++@interface ZenTestMagnifyEvent : NSEvent {
++ @public
++  NSWindow* mTestWindow;
++  NSPoint mTestLocation;
++  CGFloat mTestMagnification;
++  NSEventPhase mTestPhase;
++  NSEventModifierFlags mTestModifiers;
++}
++@end
++
++@implementation ZenTestMagnifyEvent
++- (NSEventType)type {
++  return NSEventTypeMagnify;
++}
++- (NSWindow*)window {
++  return mTestWindow;
++}
++- (NSPoint)locationInWindow {
++  return mTestLocation;
++}
++- (CGFloat)magnification {
++  return mTestMagnification;
++}
++- (NSEventPhase)phase {
++  return mTestPhase;
++}
++- (NSEventModifierFlags)modifierFlags {
++  return mTestModifiers;
++}
++- (NSTimeInterval)timestamp {
++  return [[NSProcessInfo processInfo] systemUptime];
++}
++@end
++
++nsresult nsCocoaWindow::SynthesizeNativeTouchPadPinch(
++    TouchpadGesturePhase aEventPhase, float aScale, LayoutDeviceIntPoint aPoint,
++    int32_t aModifierFlags) {
++  if (!mChildView || !mWindow || !std::isfinite(aScale) || aScale <= 0) {
++    return NS_ERROR_INVALID_ARG;
++  }
++  NSEventPhase phase;
++  switch (aEventPhase) {
++    case PHASE_BEGIN:
++      phase = NSEventPhaseBegan;
++      mSyntheticPinchScale = aScale;
++      break;
++    case PHASE_UPDATE:
++      phase = NSEventPhaseChanged;
++      break;
++    case PHASE_END:
++      phase = NSEventPhaseEnded;
++      break;
++    default:
++      return NS_ERROR_INVALID_ARG;
++  }
++  RefPtr<nsCocoaWindow> widget(this);
++  nsAutoRetainCocoaObject windowGrip(mWindow);
++  NSPoint point =
++      nsCocoaUtils::DevPixelsToCocoaPoints(aPoint, BackingScaleFactor());
++  point.y = nsCocoaUtils::FlippedScreenY(point.y);
++  ZenTestMagnifyEvent* event = [[ZenTestMagnifyEvent alloc] init];
++  event->mTestWindow = mWindow;
++  event->mTestLocation = [mWindow convertPointFromScreen:point];
++  event->mTestMagnification = aScale / mSyntheticPinchScale - 1.0;
++  event->mTestPhase = phase;
++  event->mTestModifiers =
++      nsCocoaUtils::ConvertWidgetModifiersToMacModifierFlags(
++          static_cast<nsIWidget::NativeModifiers>(aModifierFlags));
++  mSyntheticPinchScale = aScale;
++  if (!RoutePiPTrackpadEvent(event) && mChildView) {
++    [mChildView magnifyWithEvent:event];
++  }
++  [event release];
++  return NS_OK;
++}
++
+ nsresult nsCocoaWindow::SynthesizeNativeTouchPoint(
+     uint32_t aPointerId, TouchPointerState aPointerState,
+     mozilla::LayoutDeviceIntPoint aPoint, double aPointerPressure,
+@@ -1333,6 +1417,140 @@ - (NSRect)_opaqueRectForWindowMoveWhenInTitlebar {
  }
  @end
  
@@ -87,9 +195,39 @@ diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
 +  static_cast<nsCocoaWindow*>(aClosure)->UpdateWindowMaterial();
 +}
 +
++// Non-owning: Destroy and the destructor clear this before the widget dies.
++// Never retain a widget through a monitor block or across gesture lifetimes.
++static nsCocoaWindow* sPiPTrackpadOwner = nullptr;
++static bool sPiPTrackpadPinch = false;
++static bool sPiPTrackpadFingers = false;
++static bool sPiPTrackpadBegan = false;
++static size_t sPiPTrackpadWindows = 0;
++static id sPiPTrackpadGlobalMonitor = nil;
++
 +void nsCocoaWindow::SetWindowClass(const nsAString& aXulWinType,
 +                                   const nsAString& aXulWinClass,
 +                                   const nsAString& aXulWinName) {
++  if (aXulWinType.EqualsLiteral("Toolkit:PictureInPicture")) {
++    if (!mIsPiPTrackpadWindow) {
++      mIsPiPTrackpadWindow = true;
++      if (++sPiPTrackpadWindows == 1) {
++        // Continue an owned gesture when events escape to another application.
++        // No keys, touch data or unrelated page content are monitored.
++        sPiPTrackpadGlobalMonitor = [NSEvent
++            addGlobalMonitorForEventsMatchingMask:NSEventMaskScrollWheel |
++                                                  NSEventMaskMagnify |
++                                                  NSEventMaskLeftMouseDown |
++                                                  NSEventMaskRightMouseDown |
++                                                  NSEventMaskOtherMouseDown
++                                          handler:^(NSEvent* event) {
++                                            nsCocoaWindow::
++                                                RoutePiPTrackpadEvent(event,
++                                                                      true);
++                                          }];
++      }
++    }
++    return;
++  }
 +  if (mWindowType != WindowType::TopLevel || mIsBrowserWindow ||
 +      !aXulWinType.EqualsLiteral("navigator:browser")) {
 +    return;
@@ -129,41 +267,70 @@ diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
  void nsCocoaWindow::UpdateWindowDraggingRegion(
      const LayoutDeviceIntRegion& aRegion) {
    // mChildView returns YES from mouseDownCanMoveWindow, so we need to put
-@@ -1362,6 +1469,49 @@
-     [[mChildView window] setMovableByWindowBackground:NO];
-     [[mChildView window] setMovableByWindowBackground:YES];
+@@ -1364,6 +1582,209 @@ - (NSRect)_opaqueRectForWindowMoveWhenInTitlebar {
    }
+ }
+ 
++void nsCocoaWindow::UnregisterPiPTrackpad() {
++  if (sPiPTrackpadOwner == this) {
++    sPiPTrackpadOwner = nullptr;
++    sPiPTrackpadFingers = false;
++  }
++  if (mIsPiPTrackpadWindow) {
++    mIsPiPTrackpadWindow = false;
++    if (--sPiPTrackpadWindows == 0 && sPiPTrackpadGlobalMonitor) {
++      [NSEvent removeMonitor:sPiPTrackpadGlobalMonitor];
++      sPiPTrackpadGlobalMonitor = nil;
++    }
++  }
 +}
 +
-+void nsCocoaWindow::DispatchPiPTrackpadPhase(PiPTrackpadPhase aPhase) {
-+  // GetDocument is the widget listener's root document, not the hit-tested
-+  // remote video. Ordinary web pages and browser windows receive no bridge.
++bool nsCocoaWindow::DispatchPiPTrackpadEvent(PiPTrackpadPhase aPhase,
++                                             NSEvent* aEvent,
++                                             NSPoint aScreenPoint) {
 +  RefPtr<nsCocoaWindow> widget(this);
 +  RefPtr<dom::Document> document = GetDocument();
-+  if (!document || !document->NodePrincipal()->IsSystemPrincipal()) {
-+    return;
++  if (!document || !document->NodePrincipal()->IsSystemPrincipal() ||
++      !document->GetDocumentURI() || !mWindow || !mChildView ||
++      mInFullScreenMode ||
++      !Preferences::GetBool("zen.pip.trackpad.enabled", true)) {
++    return false;
 +  }
-+  nsAutoCString uri;
-+  if (!document->GetDocumentURI() ||
-+      NS_FAILED(document->GetDocumentURI()->GetSpec(uri)) ||
-+      !uri.EqualsLiteral(
++  nsAutoCString spec;
++  document->GetDocumentURI()->GetSpec(spec);
++  if (!spec.EqualsLiteral(
 +          "chrome://global/content/pictureinpicture/player.xhtml")) {
-+    return;
++    return false;
 +  }
 +  RefPtr<dom::Element> root = document->GetRootElement();
 +  nsAutoString windowType;
 +  if (!root || !root->GetAttr(nsGkAtoms::windowtype, windowType) ||
 +      !windowType.EqualsLiteral("Toolkit:PictureInPicture")) {
-+    return;
++    return false;
 +  }
 +  nsCOMPtr<nsPIDOMWindowInner> inner = document->GetInnerWindow();
 +  if (!inner || inner->GetExtantDoc() != document) {
-+    return;
++    return false;
++  }
++  if (aPhase == PiPTrackpadPhase::Pan || aPhase == PiPTrackpadPhase::Pinch) {
++    nsAutoString claim;
++    RefPtr<nsAtom> attr = NS_Atomize("zen-pip-trackpad-capture");
++    if (!root->GetAttr(kNameSpaceID_None, attr, claim) ||
++        !(sPiPTrackpadPinch ? claim.EqualsLiteral("pinch")
++                            : claim.EqualsLiteral("pan"))) {
++      return false;
++    }
 +  }
 +  nsAutoString name;
 +  switch (aPhase) {
 +    case PiPTrackpadPhase::Start:
 +      name.AssignLiteral("MozZenPiPTrackpadStart");
++      break;
++    case PiPTrackpadPhase::Pan:
++      name.AssignLiteral("MozZenPiPTrackpadPan");
++      break;
++    case PiPTrackpadPhase::Pinch:
++      name.AssignLiteral("MozZenPiPTrackpadPinch");
 +      break;
 +    case PiPTrackpadPhase::End:
 +      name.AssignLiteral("MozZenPiPTrackpadEnd");
@@ -172,14 +339,145 @@ diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
 +      name.AssignLiteral("MozZenPiPTrackpadCancel");
 +      break;
 +  }
-+  // Keep widget/document/inner alive across synchronous privileged JS. The
-+  // caller rechecks its live child after dispatch, which can close the player.
-+  nsContentUtils::DispatchEventOnlyToChrome(
-+      document, document, name, CanBubble::eYes, Cancelable::eNo);
- }
- 
++  nsAutoString modifiers;
++  NSEventModifierFlags flags = [aEvent modifierFlags];
++  if ([aEvent type] == NSEventTypeMagnify ||
++      (flags & NSEventModifierFlagControl)) {
++    modifiers.AppendLiteral("Control ");
++  }
++  if (flags & NSEventModifierFlagCommand) modifiers.AppendLiteral("Meta ");
++  if (flags & NSEventModifierFlagOption) modifiers.AppendLiteral("Alt ");
++  if (flags & NSEventModifierFlagShift) modifiers.AppendLiteral("Shift ");
++  const NSPoint local =
++      [mChildView convertPoint:[mWindow convertPointFromScreen:aScreenPoint]
++                      fromView:nil];
++  const double dx =
++      aPhase == PiPTrackpadPhase::Pan ? -[aEvent scrollingDeltaX] : 0;
++  const double dy = aPhase == PiPTrackpadPhase::Pinch ? [aEvent magnification]
++                    : aPhase == PiPTrackpadPhase::Pan
++                        ? -[aEvent scrollingDeltaY]
++                        : 0;
++  // A dedicated chrome event avoids APZ/remote hit-testing against coordinates
++  // which are now outside the moving window. It never reaches a web document.
++  RefPtr<dom::WheelEvent> event =
++      new dom::WheelEvent(document, nullptr, nullptr);
++  event->InitWheelEvent(
++      name, true, true, nullptr, 0, NSToIntRound(aScreenPoint.x),
++      NSToIntRound(nsCocoaUtils::FlippedScreenY(aScreenPoint.y)),
++      NSToIntRound(local.x), NSToIntRound(local.y), 0, nullptr, modifiers, dx,
++      dy, 0, 0);
++  event->SetTrusted(true);
++  event->WidgetEventPtr()->mFlags.mOnlyChromeDispatch = true;
++  IgnoredErrorResult error;
++  document->DispatchEvent(*event, error);
++  return !error.Failed() && event->DefaultPrevented();
++}
++
++bool nsCocoaWindow::RoutePiPTrackpadEvent(NSEvent* aEvent, bool aGlobal) {
++  const NSEventType type = [aEvent type];
++  const bool pinch = type == NSEventTypeMagnify;
++  const bool scroll =
++      type == NSEventTypeScrollWheel && [aEvent hasPreciseScrollingDeltas];
++  const bool click = type == NSEventTypeLeftMouseDown ||
++                     type == NSEventTypeRightMouseDown ||
++                     type == NSEventTypeOtherMouseDown;
++  if (!pinch && !scroll && !click) return false;
++
++  const NSPoint point = aGlobal ? [NSEvent mouseLocation]
++                                : nsCocoaUtils::ScreenLocationForEvent(aEvent);
++  auto cancelOwner = [&](bool aStopMotion = true) {
++    RefPtr<nsCocoaWindow> owner(sPiPTrackpadOwner);
++    sPiPTrackpadOwner = nullptr;
++    sPiPTrackpadFingers = false;
++    if (owner && aStopMotion) {
++      owner->DispatchPiPTrackpadEvent(PiPTrackpadPhase::Cancel, aEvent, point);
++    }
++  };
++  if (click || [NSEvent pressedMouseButtons]) {
++    cancelOwner();
++    return false;
++  }
++  const NSEventPhase phase = [aEvent phase];
++  const bool momentum = scroll && [aEvent momentumPhase] != NSEventPhaseNone;
++  if (momentum) {
++    // After Ended, only this original owner may receive the OS tail. JS owns
++    // the coast, so discard the native tail instead of starting it twice.
++    const bool owned = sPiPTrackpadOwner && !sPiPTrackpadPinch;
++    if ([aEvent momentumPhase] & (NSEventPhaseEnded | NSEventPhaseCancelled)) {
++      sPiPTrackpadOwner = nullptr;
++      sPiPTrackpadFingers = false;
++    }
++    return owned;
++  }
++  if (phase == NSEventPhaseNone ||
++      (scroll && ([aEvent modifierFlags] & NSEventModifierFlagControl))) {
++    cancelOwner(sPiPTrackpadFingers);
++    return false;  // Preserve ordinary wheel / Control-wheel behavior.
++  }
++  const bool starting =
++      (phase & NSEventPhaseMayBegin) ||
++      ((phase & NSEventPhaseBegan) &&
++       (!sPiPTrackpadOwner || sPiPTrackpadBegan || pinch != sPiPTrackpadPinch));
++  if (starting) {
++    cancelOwner(sPiPTrackpadFingers);
++    // AppKit sends magnify to the key window. Resolve the visible window under
++    // the initial pointer instead; never activate it or move keyboard focus.
++    NSInteger number = [NSWindow windowNumberAtPoint:point
++                         belowWindowWithWindowNumber:0];
++    NSWindow* window = [NSApp windowWithWindowNumber:number];
++    if (!window || ![window isVisible] || [window isMiniaturized] ||
++        [window attachedSheet])
++      return false;
++    NSView* view =
++        [window.contentView hitTest:[window convertPointFromScreen:point]];
++    while (view && ![view isKindOfClass:[ChildView class]])
++      view = view.superview;
++    if (!view) return false;
++    RefPtr<nsCocoaWindow> candidate(
++        static_cast<nsCocoaWindow*>([(ChildView*)view widget]));
++    if (!candidate ||
++        !candidate->DispatchPiPTrackpadEvent(PiPTrackpadPhase::Start, aEvent,
++                                             point) ||
++        !candidate->mChildView || candidate->mOnDestroyCalled)
++      return false;
++    sPiPTrackpadOwner = candidate;
++    sPiPTrackpadPinch = pinch;
++    sPiPTrackpadFingers = true;
++    sPiPTrackpadBegan = phase & NSEventPhaseBegan;
++  } else if (phase & NSEventPhaseBegan) {
++    sPiPTrackpadBegan = true;  // Began after MayBegin is the same touch.
++  }
++  RefPtr<nsCocoaWindow> owner(sPiPTrackpadOwner);
++  if (!owner || !sPiPTrackpadFingers || pinch != sPiPTrackpadPinch) {
++    return false;
++  }
++  if (phase & NSEventPhaseCancelled) {
++    cancelOwner();
++    return true;
++  }
++  const bool hasDelta =
++      pinch ? [aEvent magnification] != 0
++            : [aEvent scrollingDeltaX] != 0 || [aEvent scrollingDeltaY] != 0;
++  if (hasDelta && !owner->DispatchPiPTrackpadEvent(
++                      pinch ? PiPTrackpadPhase::Pinch : PiPTrackpadPhase::Pan,
++                      aEvent, point)) {
++    cancelOwner();
++    return false;
++  }
++  if (sPiPTrackpadOwner != owner) return true;  // Dispatch closed the player.
++  if (phase & NSEventPhaseEnded) {
++    // Deliver any final nonzero delta first, then release exactly once.
++    sPiPTrackpadFingers = false;
++    if (pinch) sPiPTrackpadOwner = nullptr;
++    owner->DispatchPiPTrackpadEvent(PiPTrackpadPhase::End, aEvent, point);
++  }
++  return true;
++}
++
  nsEventStatus nsCocoaWindow::DispatchAPZInputEvent(InputData& aEvent) {
-@@ -2045,6 +2195,8 @@
+   APZEventResult result;
+ 
+@@ -2045,6 +2466,8 @@ - (void)swipeWithEvent:(NSEvent*)anEvent {
  - (void)magnifyWithEvent:(NSEvent*)anEvent {
    NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
  
@@ -188,94 +486,56 @@ diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
    if ([self maybeRollup:anEvent]) {
      return;
    }
-@@ -2067,6 +2219,19 @@
+@@ -2067,6 +2490,8 @@ - (void)magnifyWithEvent:(NSEvent*)anEvent {
    }
    mGestureState = eGestureState_MagnifyGesture;
  
 +  RefPtr<nsCocoaWindow> geckoChildDeathGrip(mGeckoChild);
-+  const NSEventPhase nativePhase = [anEvent phase];
-+  if (nativePhase == NSEventPhaseBegan ||
-+      nativePhase == NSEventPhaseCancelled) {
-+    geckoChildDeathGrip->DispatchPiPTrackpadPhase(
-+        nativePhase == NSEventPhaseBegan
-+            ? nsCocoaWindow::PiPTrackpadPhase::Start
-+            : nsCocoaWindow::PiPTrackpadPhase::Cancel);
-+    if (mGeckoChild != geckoChildDeathGrip) {
-+      return;
-+    }
-+  }
 +
    NSPoint locationInWindow =
        nsCocoaUtils::EventLocationForWindow(anEvent, [self window]);
    ScreenPoint position = ViewAs<ScreenPixel>(
-@@ -2110,7 +2275,12 @@
+@@ -2110,7 +2535,7 @@ - (void)magnifyWithEvent:(NSEvent*)anEvent {
                            100.0 * (1.0 - [anEvent magnification]),
                            nsCocoaUtils::ModifiersForEvent(anEvent)};
  
 -  mGeckoChild->DispatchAPZInputEvent(event);
 +  geckoChildDeathGrip->DispatchAPZInputEvent(event);
-+  if (nativePhase == NSEventPhaseEnded &&
-+      mGeckoChild == geckoChildDeathGrip) {
-+    geckoChildDeathGrip->DispatchPiPTrackpadPhase(
-+        nsCocoaWindow::PiPTrackpadPhase::End);
-+  }
  
    NS_OBJC_END_TRY_IGNORE_BLOCK;
  }
-@@ -2732,6 +2902,22 @@
+@@ -2732,6 +3157,7 @@ - (void)scrollWheel:(NSEvent*)theEvent {
    }
  
    NSEventPhase phase = [theEvent phase];
 +  RefPtr<nsCocoaWindow> geckoChildDeathGrip(mGeckoChild);
-+  const bool preciseTrackpad = [theEvent hasPreciseScrollingDeltas];
-+  // DOM wheel drops zero deltas. Preserve real finger boundaries for PiP,
-+  // independently of the internal Start that sendWheelCondition may invent.
-+  if (preciseTrackpad) {
-+    if (phase & (NSEventPhaseMayBegin | NSEventPhaseBegan)) {
-+      geckoChildDeathGrip->DispatchPiPTrackpadPhase(
-+          nsCocoaWindow::PiPTrackpadPhase::Start);
-+    } else if (phase & NSEventPhaseCancelled) {
-+      geckoChildDeathGrip->DispatchPiPTrackpadPhase(
-+          nsCocoaWindow::PiPTrackpadPhase::Cancel);
-+    }
-+    if (mGeckoChild != geckoChildDeathGrip) {
-+      return;
-+    }
-+  }
    // Fire eWheelOperationStart/End events when 2 fingers touch/release the
    // touchpad.
    if (phase & NSEventPhaseMayBegin) {
-@@ -2746,11 +2932,9 @@
+@@ -2746,11 +3172,9 @@ - (void)scrollWheel:(NSEvent*)theEvent {
                      forEvent:theEvent];
    }
  
 -  if (!mGeckoChild) {
--    return;
--  }
++  if (mGeckoChild != geckoChildDeathGrip) {
+     return;
+   }
 -  RefPtr<nsCocoaWindow> geckoChildDeathGrip(mGeckoChild);
 -
-+  if (mGeckoChild != geckoChildDeathGrip) {
-+    return;
-+  }
    NSPoint locationInWindow =
        nsCocoaUtils::EventLocationForWindow(theEvent, [self window]);
  
-@@ -2833,6 +3017,14 @@
+@@ -2833,6 +3257,9 @@ ScrollWheelInput wheelEvent(eventTimeStamp, modifiers, scrollMode,
      geckoChildDeathGrip->DispatchAPZWheelInputEvent(wheelEvent);
    }
  
 +  // Ended can include a last nonzero finger delta: deliver it before release,
 +  // and release synchronously before the OS's subsequent momentum samples.
-+  if (preciseTrackpad && (phase & NSEventPhaseEnded) &&
-+      mGeckoChild == geckoChildDeathGrip) {
-+    geckoChildDeathGrip->DispatchPiPTrackpadPhase(
-+        nsCocoaWindow::PiPTrackpadPhase::End);
-+  }
 +
    NS_OBJC_END_TRY_IGNORE_BLOCK;
  }
  
-@@ -3878,7 +4070,9 @@
+@@ -3878,7 +4305,9 @@ - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
  // NSDraggingDestination
  - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
    MOZ_LOG(sCocoaLog, LogLevel::Info, ("ChildView draggingUpdated: entered\n"));
@@ -286,7 +546,7 @@ diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
  }
  
  // NSDraggingDestination
-@@ -3894,6 +4088,9 @@
+@@ -3894,6 +4323,9 @@ - (void)draggingExited:(id<NSDraggingInfo>)sender {
  - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
    nsAutoRetainCocoaObject kungFuDeathGrip(self);
    BOOL handled = [self doDragAction:eDrop sender:sender] != NSDragOperationNone;
@@ -296,9 +556,11 @@ diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
    NS_IF_RELEASE(mDragService);
    return handled;
  }
-@@ -4939,6 +5136,10 @@
+@@ -4938,7 +5370,12 @@ - (BOOL)wantsBestResolutionOpenGLSurface {
+ 
  nsCocoaWindow::~nsCocoaWindow() {
    NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
++  UnregisterPiPTrackpad();
  
 +  if (mIsBrowserWindow) {
 +    Preferences::UnregisterCallback(ZenWindowVibrancyPrefChanged,
@@ -307,3 +569,11 @@ diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
    RemoveAllChildren();
    if (mWindow && mWindowMadeHere) {
      CancelAllTransitions();
+@@ -5284,6 +5721,7 @@ static unsigned int WindowMaskForBorderStyle(BorderStyle aBorderStyle) {
+     return;
+   }
+   mOnDestroyCalled = true;
++  UnregisterPiPTrackpad();
+ 
+   nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
+ 

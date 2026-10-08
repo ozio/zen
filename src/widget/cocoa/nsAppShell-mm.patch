@@ -1,0 +1,15 @@
+diff --git a/widget/cocoa/nsAppShell.mm b/widget/cocoa/nsAppShell.mm
+index 5bdd7894..408f9817 100644
+--- a/widget/cocoa/nsAppShell.mm
++++ b/widget/cocoa/nsAppShell.mm
+@@ -187,7 +187,9 @@ - (void)run {
+ 
+ - (void)sendEvent:(NSEvent*)anEvent {
+   mozilla::BackgroundHangMonitor().NotifyActivity();
+-  [super sendEvent:anEvent];
++  if (!nsCocoaWindow::RoutePiPTrackpadEvent(anEvent)) {
++    [super sendEvent:anEvent];
++  }
+ }
+ 
+ - (NSEvent*)nextEventMatchingMask:(NSEventMask)mask

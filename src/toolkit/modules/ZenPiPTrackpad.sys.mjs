@@ -8,11 +8,18 @@ const PREF = "zen.pip.trackpad.enabled";
 const PHASE_START = "MozZenPiPTrackpadStart";
 const PHASE_END = "MozZenPiPTrackpadEnd";
 const PHASE_CANCEL = "MozZenPiPTrackpadCancel";
+const NATIVE_PAN = "MozZenPiPTrackpadPan";
+const NATIVE_PINCH = "MozZenPiPTrackpadPinch";
+const CAPTURE_ATTRIBUTE = "zen-pip-trackpad-capture";
+const EXCLUDED_TARGETS =
+  "input,select,textarea,[role=slider],#settings,#playbackRateSettings";
 const EVENTS = [
   "wheel",
   PHASE_START,
   PHASE_END,
   PHASE_CANCEL,
+  NATIVE_PAN,
+  NATIVE_PINCH,
   "pointerdown",
   "resize",
   "MozDOMFullscreen:Entered",
@@ -29,6 +36,10 @@ export class ZenPiPTrackpad {
     this.fullscreenPending = false;
     this.expectedSize = null;
     this.resizeRequests = [];
+    this.geometryFrame = null;
+    this.pendingRect = null;
+    this.nativeGesture = null;
+    this.onMove = onMove;
     this.motion = new ZenPiPGestureMotion(
       {
         now: () => window.performance.now(),
@@ -45,37 +56,21 @@ export class ZenPiPTrackpad {
           height: window.screen.availHeight,
         }),
         writeRect: (rect) => {
-          const width = Math.round(rect.width);
-          const height = Math.round(rect.height);
-          if (window.outerWidth !== width || window.outerHeight !== height) {
-            this.expectedSize = { width, height };
-            this.resizeRequests.push(this.expectedSize);
-            // AppKit can coalesce many input samples into one native resize.
-            if (this.resizeRequests.length > 64) {
-              this.resizeRequests.shift();
+          // Retain every fractional input sample, but submit at most one pinch
+          // rectangle per display frame. A native resize and a subsequent move
+          // expose two different centers to AppKit and the remote video.
+          if (this.motion.phase === "pinch") {
+            this.pendingRect = { ...rect };
+            if (this.geometryFrame === null) {
+              this.geometryFrame = window.requestAnimationFrame(() => {
+                this.geometryFrame = null;
+                this.flushGeometry();
+              });
             }
-            window.resizeTo(width, height);
+          } else {
+            this.applyGeometry(rect);
           }
-          // Keep desired fractional geometry across asynchronous native resize.
-          // Reading outerWidth here can still return the PREVIOUS size and
-          // discard the next pinch sample. Actual bounds are checked on resize.
-          const bounds = this.motion.bounds;
-          const x = Math.max(
-            bounds.x,
-            Math.min(rect.x, bounds.x + bounds.width - rect.width),
-          );
-          const y = Math.max(
-            bounds.y,
-            Math.min(rect.y, bounds.y + bounds.height - rect.height),
-          );
-          window.moveTo(Math.round(x), Math.round(y));
-          onMove();
-          return {
-            x,
-            y,
-            width: rect.width,
-            height: rect.height,
-          };
+          return rect;
         },
         requestFrame: (callback) =>
           window.requestAnimationFrame((time) => {
@@ -140,18 +135,77 @@ export class ZenPiPTrackpad {
 
   observe() {
     if (!this.enabled) {
-      this.motion.stop();
+      this.cancelGesture();
     }
   }
 
   suspendForFullscreen() {
     this.fullscreenPending = true;
-    this.motion.stop();
+    this.cancelGesture();
   }
 
   resumeAfterFullscreen() {
     this.fullscreenPending = false;
+    this.cancelGesture();
+  }
+
+  applyGeometry(rect) {
+    const width = Math.round(rect.width);
+    const height = Math.round(rect.height);
+    const x = Math.round(rect.x);
+    const y = Math.round(rect.y);
+    if (this.window.outerWidth !== width || this.window.outerHeight !== height) {
+      this.expectedSize = { width, height };
+      this.resizeRequests.push(this.expectedSize);
+      if (this.resizeRequests.length > 64) {
+        this.resizeRequests.shift();
+      }
+      // Chrome-only Gecko API: one SetPositionAndSize / AppKit setFrame.
+      this.window.moveResize(x, y, width, height);
+    } else {
+      this.window.moveTo(x, y);
+    }
+    this.onMove();
+  }
+
+  flushGeometry() {
+    if (this.geometryFrame !== null) {
+      this.window.cancelAnimationFrame(this.geometryFrame);
+      this.geometryFrame = null;
+    }
+    const rect = this.pendingRect;
+    this.pendingRect = null;
+    if (rect && this.enabled && this.sameScreenBounds) {
+      this.applyGeometry(rect);
+    }
+  }
+
+  releaseCapture() {
+    this.nativeGesture = null;
+    this.window.document.documentElement.removeAttribute(CAPTURE_ATTRIBUTE);
+  }
+
+  cancelGesture() {
+    this.releaseCapture();
+    if (this.geometryFrame !== null) {
+      this.window.cancelAnimationFrame(this.geometryFrame);
+      this.geometryFrame = null;
+    }
+    this.pendingRect = null;
     this.motion.stop();
+  }
+
+  acceptsInput(event, target = event.target) {
+    return (
+      event.deltaMode === 0 &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !event.buttons &&
+      Number.isFinite(event.deltaX) &&
+      Number.isFinite(event.deltaY) &&
+      !target?.closest?.(EXCLUDED_TARGETS)
+    );
   }
 
   handleEvent(event) {
@@ -170,7 +224,7 @@ export class ZenPiPTrackpad {
       return;
     }
     if (event.type === "pointerdown") {
-      this.motion.stop();
+      this.cancelGesture();
       this.expectedSize = null;
       this.resizeRequests = [];
       return;
@@ -189,7 +243,7 @@ export class ZenPiPTrackpad {
       } else {
         this.resizeRequests = [];
         this.expectedSize = null;
-        this.motion.stop();
+        this.cancelGesture();
       }
       // Native aspect/minimum-size constraints are authoritative once reported.
       // Clamp their actual outer rectangle without replacing the newer target
@@ -217,7 +271,7 @@ export class ZenPiPTrackpad {
         }
       }
       if (!this.sameScreenBounds) {
-        this.motion.stop();
+        this.cancelGesture();
       }
       return;
     }
@@ -227,27 +281,61 @@ export class ZenPiPTrackpad {
     const time = this.window.performance.now();
     switch (event.type) {
       case PHASE_START:
+        // Cocoa dispatches a cancellable WheelEvent directly to this chrome
+        // document. Claim only an enabled PiP surface, never a slider/panel.
+        // Once claimed, later samples retain this target outside its bounds.
+        if (event.cancelable) {
+          const target = this.window.document.elementFromPoint(
+            event.clientX,
+            event.clientY,
+          );
+          if (!target || !this.acceptsInput(event, target)) {
+            return;
+          }
+          this.flushGeometry();
+          this.nativeGesture = event.ctrlKey ? "pinch" : "pan";
+          this.window.document.documentElement.setAttribute(
+            CAPTURE_ATTRIBUTE,
+            this.nativeGesture,
+          );
+          event.preventDefault();
+        }
         this.motion.begin(time);
         break;
       case PHASE_END:
+        this.flushGeometry();
+        this.releaseCapture();
         this.motion.end(time);
+        if (event.cancelable) {
+          event.preventDefault();
+        }
         break;
       case PHASE_CANCEL:
-        this.motion.stop();
+        this.cancelGesture();
+        if (event.cancelable) {
+          event.preventDefault();
+        }
+        break;
+      case NATIVE_PAN:
+      case NATIVE_PINCH:
+        if (
+          !this.nativeGesture ||
+          !this.acceptsInput(event) ||
+          (event.type === NATIVE_PINCH) !== (this.nativeGesture === "pinch")
+        ) {
+          return;
+        }
+        if (event.type === NATIVE_PINCH) {
+          // AppKit magnification is an incremental scale, not scroll pixels.
+          this.motion.pinch(1 + event.deltaY);
+        } else {
+          this.motion.pan(-event.deltaX, -event.deltaY, time);
+        }
+        event.preventDefault();
+        event.stopPropagation();
         break;
       case "wheel":
-        if (
-          event.deltaMode !== 0 ||
-          event.metaKey ||
-          event.altKey ||
-          event.shiftKey ||
-          event.buttons ||
-          !Number.isFinite(event.deltaX) ||
-          !Number.isFinite(event.deltaY) ||
-          event.target?.closest?.(
-            "input,select,textarea,[role=slider],#settings,#playbackRateSettings",
-          )
-        ) {
+        if (!this.acceptsInput(event)) {
           return;
         }
         // The OS tail belongs to the completed finger gesture. Own animation
@@ -273,7 +361,7 @@ export class ZenPiPTrackpad {
     }
     this.destroyed = true;
     this.resizeRequests = [];
-    this.motion.stop();
+    this.cancelGesture();
     if (this.platform === "macosx") {
       for (const type of EVENTS) {
         this.window.removeEventListener(type, this, { capture: true });
