@@ -46,4 +46,4 @@ Native/IDL changes require a fresh import and full build through `tools/local/de
 
 Runtime evidence must identify the exact package, source SHA, PID and explicit managed Playground profile. Native replay must keep the gesture's original screen point fixed as the window moves, test finger Ended with a final delta and momentum separately, and verify ordinary PiP controls/fullscreen. Control-wheel replay verifies the converted pinch path; physical trackpad pinch and subjective tuning are separate checks. Do not use macOS `sendNativeTouchpadPinch`, whose inherited Gecko implementation aborts.
 
-Candidate results and remaining hardware limitations are recorded separately after the signed package is tested. Main Zen and the personal profile are not changed by Playground testing.
+The signed macOS candidate and remaining hardware limitations are recorded in [the validation report](pip-trackpad-validation.md). Main Zen and the personal profile are not changed by Playground testing. The improvement checklist remains open until physical trackpad acceptance; converted-wheel replay does not establish native magnify delivery or subjective feel.
