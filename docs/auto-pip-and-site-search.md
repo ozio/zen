@@ -1,6 +1,6 @@
 # Automatic PiP and Tab site search
 
-Validated on 9 October 2026 in the signed macOS Playground. Future Improvements 10 and 7 have separate commits, in that order:
+Validated on 9 October 2026 in the signed macOS Playground, then promoted to daily Zen after the user closed it. Future Improvements 10 and 7 have separate commits, in that order:
 
 - [1419618b](https://github.com/ozio/zen/commit/1419618b2339db06b894a6e3ddeaf035ace4b0d0): temporary automatic video pop-out, with explicit ownership distinct from manual PiP.
 - [18d75652](https://github.com/ozio/zen/commit/18d75652b931bc5e0d7cc850638fe8b15ed85307): site/engine selection with Tab in Command T and the browser address bar.
@@ -20,7 +20,7 @@ Validated on 9 October 2026 in the signed macOS Playground. Future Improvements 
 | Playground tree SHA256 | `f2a49bddf989f811477166f1b6f4dfd1225c7fb1b091844df32f03c7f03d52bb` |
 | Signing | Apple Development; complete deep/strict signatures valid before and after restart; no notarization |
 
-Canonical patches were reconstructed from the Firefox base and compared byte for byte with the imported engine and both sealed packages. The live binary, source stamp, PID, explicit profile and loopback Marionette endpoint were verified. The main `/Applications/Zen.app` retains its previous complete file inventory and valid signature; its personal profile was not accessed.
+Canonical patches were reconstructed from the Firefox base and compared byte for byte with the imported engine and both sealed packages. The live binary, source stamp, PID, explicit profile and loopback Marionette endpoint were verified. During this Playground validation, the main `/Applications/Zen.app` retained its previous complete file inventory and valid signature; its personal profile was not accessed. The subsequent authorized daily installation is recorded below.
 
 The final full build used eight jobs with the wrapper's allowed 4 GiB reserve for compatible UI changes over a matching full native baseline. It was a full build receipt, not a UI-only package.
 
@@ -46,7 +46,27 @@ The same signed package was quit normally, its process exit verified, and it was
 - Dedicated FoxPilot retained exactly `[8091]`; ordinary FoxPilot remained on its separate main-browser roster. A marked local page was correlated with the verified Playground, snapshotted, clicked and read back through dedicated FoxPilot before and after restart. Temporary verification tabs were closed.
 - Browser Sync remained signed out; compiled updating and automatic update preferences remained disabled. Complete installed signatures and the main application's unchanged file inventory were verified after restart.
 
-No daily installation was performed. Linux/Windows runtime behaviour, crash recovery and physical trackpad/mouse acceptance were not tested by this change. Future Improvements 2 remains open for its recorded physical acceptance.
+Feature and compatibility scenarios ran in Playground. Linux/Windows runtime behaviour, crash recovery and physical trackpad/mouse acceptance were not tested by this change. Future Improvements 2 remains open for its recorded physical acceptance.
+
+## Daily installation
+
+The guarded installer promoted the retained standalone source `18d75652b931bc5e0d7cc850638fe8b15ed85307` to `/Applications/Zen.app` on 9 October 2026, after a successful preview and confirmation that main Zen was stopped. Its complete file inventory, executable digest and deep/strict signature match the tested base package before and after startup. The main icon, bundle identity `app.zen-browser.zen` and normal URL handlers remain intact.
+
+The installer left the existing registered personal profile and both registries byte for byte unchanged. Daily Zen was observed running normally on that profile, without Marionette or privileged debugging flags. A complete SessionStore comparison preserved all 1,504 original saved tabs, their relative order, Space/group membership and pinning, plus all seven Spaces, 54 groups and the folders. New tabs opened during the check were retained. FoxPilot's live tab enumeration exposes a subset of Zen's `allStoredTabs`; it was correlated with the current saved session rather than treated as a complete inventory. All 11 existing extensions kept their versions and enabled/disabled state. HTTP/HTTPS links still resolve to the main application, ordinary FoxPilot reconnects only on 8089, and the unchanged Playground remains separately connected on 8091.
+
+These are focused main-installation checks. The feature scenarios and fresh native Enpass exchange were validated separately in Playground; a daily vault unlock/autofill flow was not repeated. No personal profile was copied into Playground, and no personal URLs, Space names or vault data were recorded in the diagnostic receipts.
+
+The previous working main source `47e576d02d5542475eb4c3b092abd7e99dccf5f2`, its matching pre-update personal profile and both registries are sealed in backup `2026-10-08T22-47-31.315519_00-00-e774cdf1`. Integrity and signatures passed; an actual temporary recovery copy of the application, profile and registries matched the backup and was removed afterward. The guarded rollback preview also passed before main reopened. Rollback was not applied to the daily application. The original official-release backup is retained separately.
+
+To return to the immediately previous version, close main Zen normally and inspect the scope first:
+
+```sh
+python3.11 tools/local/dev.py rollback --backup 2026-10-08T22-47-31.315519_00-00-e774cdf1
+```
+
+Follow [the guarded rollback procedure](../DEVELOPMENT.md#rollback) before adding `--apply`. Once the profile has evolved, restoration requires reviewing the snapshot and using `--restore-profile-snapshot`; the command preserves current data in another backup first.
+
+Local installation, recovery and normal-launch receipts are under `.zen-local/auto-pip-site-search/main-promotion/`. The current pointers are `.zen-local/main-install.json` and `.zen-local/main-post-install.json`; the latter distinguishes the complete saved session from FoxPilot's live tab subset.
 
 ## Retained evidence and launch
 
