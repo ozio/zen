@@ -1,12 +1,38 @@
 diff --git a/toolkit/actors/PictureInPictureChild.sys.mjs b/toolkit/actors/PictureInPictureChild.sys.mjs
-index 49dd388d8304245e9e840cc32577eed45d36d62c..dde63be2eb6c442acb387b14bf05c18ce9419fa4 100644
+index 03282197633ad237bbd6fe3d9f3cd3a2fa53291d..6b9d1cf89ba25963a2cf342c0f0496d7869c674d 100644
 --- a/toolkit/actors/PictureInPictureChild.sys.mjs
 +++ b/toolkit/actors/PictureInPictureChild.sys.mjs
-@@ -318,6 +318,7 @@ export class PictureInPictureLauncherChild extends JSWindowActorChild {
-       if (
-         video &&
+@@ -285,6 +285,7 @@ export class PictureInPictureLauncherChild extends JSWindowActorChild {
+       volume: PictureInPictureChild.videoWrapper.getVolume(video),
+       playbackRate: PictureInPictureChild.videoWrapper.getPlaybackRate(video),
+       autoFocus,
++      isAutoPip: reason === "AutoPip",
+     });
+ 
+     // Some tests don't bother setting a reason.
+@@ -341,13 +342,19 @@ export class PictureInPictureLauncherChild extends JSWindowActorChild {
+    */
+   autoToggle() {
+     let doc = this.document;
+-    if (doc) {
+-      let video = this.findVideoToPiP(doc);
+-      if (
+-        video &&
++    if (doc?.visibilityState === "hidden") {
++      // A focused paused/muted preview must not hide another eligible video.
++      // Auto-toggle must never toggle an already manually popped-out video off.
++      const eligible = video =>
++        !video.isCloningElementVisually &&
          PictureInPictureChild.videoIsPlaying(video) &&
+-        PictureInPictureChild.videoIsPiPEligible(video)
+-      ) {
 +        !video.muted &&
-         PictureInPictureChild.videoIsPiPEligible(video)
-       ) {
++        PictureInPictureChild.videoIsPiPEligible(video);
++      let video = [...doc.querySelectorAll("video")].find(eligible);
++      if (HTMLVideoElement.isInstance(doc.activeElement) && eligible(doc.activeElement)) {
++        video = doc.activeElement;
++      }
++      if (video) {
          this.togglePictureInPicture({ video, reason: "AutoPip" }, false);
+       }
+     }

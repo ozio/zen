@@ -63,8 +63,8 @@ class Handler(BaseHTTPRequestHandler):
             data, content_type = PAGE, 'text/html; charset=utf-8'
         elif path == '/translation':
             data, content_type = TRANSLATION_PAGE, 'text/html; charset=utf-8'
-        elif path == '/pip':
-            data = Path(__file__).with_name('pip.html').read_bytes()
+        elif path in ('/pip', '/auto-pip'):
+            data = Path(__file__).with_name('auto-pip.html' if path == '/auto-pip' else 'pip.html').read_bytes()
             content_type = 'text/html; charset=utf-8'
         else:
             self.send_error(404)

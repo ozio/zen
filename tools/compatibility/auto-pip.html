@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Zen automatic pop-out probe</title>
+  <style>
+    body { font: 20px system-ui; padding: 2rem; background: #142036; color: white; }
+    video { width: 480px; height: 270px; }
+    button { font: inherit; padding: .6rem; }
+  </style>
+  <h1>Automatic pop-out: synthetic video with an audio track</h1>
+  <button id="play">Play unmuted video</button>
+  <button id="pause">Pause</button>
+  <button id="mute">Mute / unmute video</button>
+  <button id="pip">Manual pop-out</button>
+  <output id="status">Ready</output><br />
+  <video id="video" controls playsinline></video>
+  <script>
+    const video = document.querySelector("video");
+    const canvas = document.createElement("canvas");
+    canvas.width = 640; canvas.height = 360;
+    const ctx = canvas.getContext("2d");
+    let audio;
+    function draw(time) {
+      ctx.fillStyle = "#174a7e"; ctx.fillRect(0, 0, 640, 360);
+      ctx.fillStyle = "#ff6658"; ctx.fillRect((time / 8) % 550, 180, 80, 80);
+      ctx.fillStyle = "white"; ctx.font = "28px system-ui";
+      ctx.fillText("Zen auto pop-out", 20, 50);
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+    document.querySelector("#play").onclick = async () => {
+      if (!video.srcObject) {
+        audio = new AudioContext();
+        const oscillator = audio.createOscillator();
+        const gain = audio.createGain();
+        // Real audio track with silent synthetic samples; video.muted is false.
+        gain.gain.value = 0;
+        const destination = audio.createMediaStreamDestination();
+        oscillator.connect(gain).connect(destination); oscillator.start();
+        const stream = canvas.captureStream(24);
+        stream.addTrack(destination.stream.getAudioTracks()[0]);
+        video.srcObject = stream;
+      }
+      await audio.resume(); video.muted = false; await video.play();
+      document.querySelector("#status").textContent = "Playing, not muted";
+    };
+    document.querySelector("#pause").onclick = () => video.pause();
+    document.querySelector("#mute").onclick = () => { video.muted = !video.muted; };
+    document.querySelector("#pip").onclick = () => video.requestPictureInPicture();
+  </script>
+</html>
