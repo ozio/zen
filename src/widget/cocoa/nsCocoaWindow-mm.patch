@@ -1,5 +1,5 @@
 diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
-index 1af56a5e..b784d5fa 100644
+index 1af56a5e..65809c85 100644
 --- a/widget/cocoa/nsCocoaWindow.mm
 +++ b/widget/cocoa/nsCocoaWindow.mm
 @@ -38,6 +38,7 @@
@@ -358,8 +358,8 @@ index 1af56a5e..b784d5fa 100644
 +  sPiPCursorOwner = nullptr;
 +  if (RefPtr<dom::Document> document = GetDocument()) {
 +    if (RefPtr<dom::Element> root = document->GetRootElement()) {
-+      root->UnsetAttr(kNameSpaceID_None, NS_Atomize("zen-pip-cursor-hidden"),
-+                      false);
++      RefPtr<nsAtom> attr = NS_Atomize("zen-pip-cursor-hidden");
++      root->UnsetAttr(kNameSpaceID_None, attr, false);
 +    }
 +  }
 +}
@@ -628,8 +628,8 @@ index 1af56a5e..b784d5fa 100644
 +    if (sPiPCursorHidden) {
 +      if (RefPtr<dom::Document> document = owner->GetDocument()) {
 +        if (RefPtr<dom::Element> root = document->GetRootElement()) {
-+          root->SetAttr(kNameSpaceID_None, NS_Atomize("zen-pip-cursor-hidden"),
-+                        u"true"_ns, false);
++          RefPtr<nsAtom> attr = NS_Atomize("zen-pip-cursor-hidden");
++          root->SetAttr(kNameSpaceID_None, attr, u"true"_ns, false);
 +        }
 +      }
 +    }
