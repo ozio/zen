@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import plistlib
 import socket
 import sys
 import tempfile
@@ -33,7 +34,7 @@ class Fixture:
         self.binary = artifact / "bundle" / "zen"
         self.binary.parent.mkdir(parents=True)
         self.binary.write_bytes(b"a dedicated fake executable")
-        self.manifest = artifact / "artifact.json"
+        self.manifest = artifact / "manifest.json"
         self.record = {"binary":str(self.binary),"profile":str(self.profile),"pid":42123,"source_sha":self.source,
                        "marionette_host":"127.0.0.1","marionette_port":2828,"marker":"ZEN PLAYGROUND",
                        "session_id":"12345678-1234-4234-9234-123456789012","artifact_manifest":str(self.manifest)}
@@ -54,6 +55,42 @@ class Fixture:
 
     def close(self):
         self.temp.cleanup()
+
+    def variant(self):
+        """A differently signed, branded macOS derivative of a separate origin."""
+        base_path = self.manifest
+        base = json.loads(base_path.read_text())
+        signing = {"identity":"-", "kind":"ad-hoc", "verified":True, "notarized":False}
+        base.update(tree_sha256="c" * 64, code_signing=signing)
+        base_path.write_text(json.dumps(base))
+        root = self.repo / ".zen-local" / "playground-artifacts" / self.source
+        bundle = root / "bundle" / "Zen Playground.app"
+        self.binary = bundle / "Contents" / "MacOS" / "zen"
+        self.binary.parent.mkdir(parents=True)
+        self.binary.write_bytes(b"a separately signed derivative executable")
+        info = {"CFBundleIdentifier":"io.ozio.zen.playground", "CFBundleName":"Zen Playground",
+                "CFBundleDisplayName":"Zen Playground", "CFBundleIconFile":"zen-playground.icns"}
+        (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps(info))
+        icon = bundle / "Contents" / "Resources" / "zen-playground.icns"
+        icon.parent.mkdir()
+        icon.write_bytes(b"the red icon")
+        self.manifest = root / "manifest.json"
+        manifest = {"schema_version":1, "variant":"playground", "source_sha":self.source,
+                    "bundle":str(bundle), "binary":str(self.binary),
+                    "binary_sha256":hashlib.sha256(self.binary.read_bytes()).hexdigest(), "tree_sha256":"d"*64,
+                    "base_artifact_manifest":str(base_path), "base_binary_sha256":base["binary_sha256"],
+                    "base_tree_sha256":base["tree_sha256"], "code_signing":signing,
+                    "branding":{"bundle_id":info["CFBundleIdentifier"], "bundle_name":info["CFBundleName"],
+                                "icon_sha256":hashlib.sha256(icon.read_bytes()).hexdigest()}}
+        self.manifest.write_text(json.dumps(manifest))
+        self.record.update({key:manifest[key] for key in (
+            "variant", "binary", "base_artifact_manifest", "base_binary_sha256", "base_tree_sha256",
+            "binary_sha256", "tree_sha256", "code_signing")})
+        self.record["artifact_manifest"] = str(self.manifest)
+        self.process["binary"] = str(self.binary)
+        self.process["argv"][0] = str(self.binary)
+        self.write()
+        return manifest
 
 
 class FakeClient:
@@ -113,6 +150,101 @@ class GuardTests(unittest.TestCase):
 
     def test_positive_manifest_and_process_control(self):
         self.assertEqual(self.fixture.guard.validate(), self.fixture.record)
+
+    def test_branded_derivative_accepts_changed_binary_with_bound_main_origin(self):
+        manifest = self.fixture.variant()
+        self.assertNotEqual(manifest["binary_sha256"], manifest["base_binary_sha256"])
+        with mock.patch("identity.sys.platform", "darwin"):
+            self.assertEqual(self.fixture.guard.validate(), self.fixture.record)
+
+    def test_variant_requires_matching_launcher_base_digests_and_signing(self):
+        original = self.fixture.variant()
+        with mock.patch("identity.sys.platform", "darwin"):
+            for key, value in (("base_binary_sha256", "e"*64), ("base_tree_sha256", "e"*64),
+                               ("code_signing", {"identity":"-", "verified":False}), ("variant", "main")):
+                with self.subTest(key=key):
+                    self.fixture.record[key] = value
+                    self.fixture.write()
+                    with self.assertRaisesRegex(Refusal, "provenance"):
+                        self.fixture.guard.validate()
+                    self.fixture.record[key] = original[key]
+            self.fixture.write()
+            manifest = dict(original, code_signing={"identity":"f"*40, "kind":"certificate", "verified":True, "notarized":False})
+            self.fixture.manifest.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(Refusal, "signing"):
+                self.fixture.guard.validate()
+
+    def test_variant_refuses_substituted_base_and_changed_origin_binary(self):
+        original = self.fixture.variant()
+        with mock.patch("identity.sys.platform", "darwin"):
+            unrelated = self.fixture.repo / "unrelated-manifest.json"
+            base_path = Path(original["base_artifact_manifest"])
+            unrelated.write_bytes(base_path.read_bytes())
+            self.fixture.manifest.write_text(json.dumps(dict(original, base_artifact_manifest=str(unrelated))))
+            with self.assertRaisesRegex(Refusal, "provenance"):
+                self.fixture.guard.validate()
+            self.fixture.manifest.write_text(json.dumps(original))
+            self.fixture.guard.validate()
+            Path(json.loads(base_path.read_text())["binary"]).write_bytes(b"changed main origin")
+            with self.assertRaisesRegex(Refusal, "hash"):
+                self.fixture.guard.validate()
+
+    def test_variant_refuses_changed_bundle_identity_handlers_or_red_icon(self):
+        manifest = self.fixture.variant()
+        info_path = Path(manifest["bundle"]) / "Contents" / "Info.plist"
+        original = plistlib.loads(info_path.read_bytes())
+        with mock.patch("identity.sys.platform", "darwin"):
+            for values in ({"CFBundleIdentifier":"app.zen-browser.zen"}, {"CFBundleURLTypes":[]},
+                           {"CFBundleDocumentTypes":[]}, {"NSUserActivityTypes":[]}, {"CFBundleIconName":"main-icon"}):
+                with self.subTest(values=values):
+                    info_path.write_bytes(plistlib.dumps(dict(original, **values)))
+                    with self.assertRaisesRegex(Refusal, "identity or URL handlers"):
+                        self.fixture.guard.validate()
+            info_path.write_bytes(plistlib.dumps(original))
+            self.fixture.guard.validate()
+            (info_path.parent / "Resources" / "zen-playground.icns").write_bytes(b"changed icon")
+            with self.assertRaisesRegex(Refusal, "hash"):
+                self.fixture.guard.validate()
+
+    def test_manifest_must_use_exact_managed_path_and_variant_requires_mac(self):
+        other = self.fixture.manifest.with_name("copied.json")
+        other.write_bytes(self.fixture.manifest.read_bytes())
+        self.fixture.record["artifact_manifest"] = str(other)
+        self.fixture.write()
+        with self.assertRaisesRegex(Refusal, "outside"):
+            self.fixture.guard.validate()
+        self.fixture.variant()
+        with mock.patch("identity.sys.platform", "linux"), self.assertRaisesRegex(Refusal, "provenance"):
+            self.fixture.guard.validate()
+
+    def test_variant_deployment_binds_derived_and_main_provenance(self):
+        manifest = self.fixture.variant()
+        app = self.fixture.repo / "Applications" / "Zen Playground.app"
+        import shutil
+        shutil.copytree(manifest["bundle"], app)
+        deployed = app / "Contents" / "MacOS" / "zen"
+        self.fixture.record["binary"] = str(deployed)
+        self.fixture.process["binary"] = str(deployed)
+        self.fixture.process["argv"][0] = str(deployed)
+        path = self.fixture.repo / ".zen-local" / "deployments" / "playground" / (self.fixture.source + ".json")
+        path.parent.mkdir(parents=True)
+        receipt = {"schema_version":1, "root":str(self.fixture.repo), "source_sha":self.fixture.source,
+                   "bundle":str(app), "binary":str(deployed), "artifact_manifest":str(self.fixture.manifest),
+                   **{key:manifest[key] for key in ("variant", "base_artifact_manifest", "base_binary_sha256",
+                       "base_tree_sha256", "binary_sha256", "tree_sha256", "code_signing")}}
+        path.write_text(json.dumps(receipt))
+        self.fixture.record["deployment_manifest"] = str(path)
+        self.fixture.write()
+        with mock.patch("identity.MAC_PLAYGROUND_APP", app), mock.patch("identity.sys.platform", "darwin"):
+            self.fixture.guard.validate()
+            path.write_text(json.dumps(dict(receipt, base_binary_sha256="e"*64)))
+            with self.assertRaisesRegex(Refusal, "variant provenance"):
+                self.fixture.guard.validate()
+            path.write_text(json.dumps(receipt))
+            info = app / "Contents" / "Info.plist"
+            info.write_bytes(plistlib.dumps(dict(plistlib.loads(info.read_bytes()), CFBundleIdentifier="app.zen-browser.zen")))
+            with self.assertRaisesRegex(Refusal, "identity or URL handlers"):
+                self.fixture.guard.validate()
 
     def test_owned_secondary_mac_application_requires_matching_source_receipt(self):
         app = self.fixture.repo / "Applications" / "Zen Playground.app"

@@ -35,6 +35,8 @@ def parser() -> argparse.ArgumentParser:
     archive = sub.add_parser("package", help="mach package then seal standalone artifact at its committed source SHA")
     archive.add_argument("--bundle", help="select a built app/directory below engine when multiple object dirs exist")
     archive.add_argument("--signing-identity", help="macOS codesigning identity: exact certificate SHA-1 or '-' for local ad hoc (default)")
+    playground_archive = sub.add_parser("package-playground", help="macOS: derive and seal the distinct Playground app from a verified main package")
+    playground_archive.add_argument("--sha", help="full packaged source SHA (default: current HEAD)")
     run = sub.add_parser("run", help="launch the clean playground using an immutable standalone artifact")
     run.add_argument("target", choices=["playground"])
     run.add_argument("--sha", help="full artifact source SHA (default: current HEAD)")
@@ -93,7 +95,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser().parse_args(argv)
     ctx = Context(args.root, toolchain_root=args.toolchains)
     handlers = {"doctor": doctor, "bootstrap": builds.bootstrap, "build": builds.build,
-                "package": builds.package, "run": builds.run_playground,
+                "package": builds.package, "package-playground": builds.package_playground, "run": builds.run_playground,
                 "reset-playground": builds.reset_playground, "stage-pr": staging.stage_pr,
                 "sync-upstream": staging.sync_upstream, "install-main": deploy.install_main,
                 "rollback": deploy.rollback}

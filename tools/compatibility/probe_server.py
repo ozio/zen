@@ -30,6 +30,25 @@ document.querySelector('#probe-login').onsubmit=e=>{
 };
 </script></html>'''
 
+# Long, stable English text exercises the real native language detector and
+# model, including the user's common case where English is a preferred language.
+# No account data, remote dependencies or scripted translation simulation.
+TRANSLATION_TEXT = """This is a translation playground.
+The browser should translate this entire page into Russian when the reader chooses the page translation command from the context menu. The original document must return when the reader asks to see the original again.
+Today we are testing a small local browser improvement. A family is visiting a quiet town near the sea. They walk through a garden, look at the flowers, and stop at a little restaurant for lunch. The weather is warm and the sky is clear. In the afternoon they plan to visit the library and read about the history of the town.
+The library has a collection of books about science, art, and travel. A friendly librarian explains how to find the right shelf. The children choose a story about a mountain expedition, while their parents find a guide to the nearby islands. Everyone enjoys the peaceful room and the view of the harbor through the large windows.
+After leaving the library, they buy some fruit at the market. The seller tells them which apples are sweet and which are best for baking. They put the fruit in a bag and return to their hotel before sunset. They talk about the places they visited and decide to take a boat trip the next morning.
+This page contains only synthetic text. There are no passwords, personal cookies, or account details. The test observes the translated document and then checks that the original English text is restored exactly, including the heading and all paragraphs.
+"""
+TRANSLATION_PAGE = (
+    '<!doctype html><html lang="en"><meta charset="utf-8">'
+    '<title>Zen page translation probe</title>'
+    '<style>body{font:20px system-ui;padding:3rem;max-width:50rem;line-height:1.5}</style>'
+    '<main id="translation-probe"><h1>' + TRANSLATION_TEXT.splitlines()[0] + '</h1>'
+    + ''.join('<p>' + paragraph + '</p>' for paragraph in TRANSLATION_TEXT.splitlines()[1:])
+    + '</main></html>'
+).encode('utf-8')
+
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -41,6 +60,8 @@ class Handler(BaseHTTPRequestHandler):
             data, content_type = b'{"fixture":"zen-probe","loopback":true}', 'application/json'
         elif path in ('/', '/seed'):
             data, content_type = PAGE, 'text/html; charset=utf-8'
+        elif path == '/translation':
+            data, content_type = TRANSLATION_PAGE, 'text/html; charset=utf-8'
         else:
             self.send_error(404)
             return

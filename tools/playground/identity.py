@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import stat
 import struct
@@ -13,6 +14,8 @@ import sys
 import uuid
 
 MAC_PLAYGROUND_APP = Path("/Applications/Zen Playground.app")
+MAC_PLAYGROUND_BUNDLE_ID = "io.ozio.zen.playground"
+MAC_PLAYGROUND_ICON = "zen-playground.icns"
 
 
 class Refusal(RuntimeError):
@@ -159,6 +162,75 @@ class Guard:
         self.state_path = self.repo / ".zen-local" / "state.json"
         self.process_reader = process_reader or process_identity
         self._hash_cache = None
+        self._artifact_hash_cache = {}
+
+    def _check_digest(self, path, expected):
+        if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise Refusal("Artifact digest is missing or invalid")
+        info = path.stat()
+        key = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, expected)
+        if self._artifact_hash_cache.get(str(path)) != key:
+            if digest(path) != expected:
+                raise Refusal("Playground artifact hash does not match its source receipt")
+            self._artifact_hash_cache[str(path)] = key
+
+    def _variant(self, record, manifest_path, manifest):
+        """Bind a branded derivative to this SHA's separately sealed main origin."""
+        sha = record["source_sha"]
+        root = self.repo / ".zen-local" / "playground-artifacts" / sha
+        base_path = self.repo / ".zen-local" / "artifacts" / sha / "manifest.json"
+        if (sys.platform != "darwin" or manifest_path != root / "manifest.json"
+                or manifest.get("variant") != "playground" or record.get("variant") != "playground"
+                or canonical(manifest.get("base_artifact_manifest")) != base_path):
+            raise Refusal("Playground variant provenance is not this source's macOS derivative")
+        base = load_json(base_path, max_size=16 * 1024 * 1024)
+        if (type(base.get("schema_version")) is not int or base["schema_version"] != 1
+                or base.get("source_sha") != sha or base.get("variant", "main") != "main"):
+            raise Refusal("Playground variant base manifest has a different source identity")
+        for key in ("binary_sha256", "tree_sha256"):
+            if (not isinstance(base.get(key), str) or not re.fullmatch(r"[0-9a-f]{64}", base[key])
+                    or manifest.get("base_" + key) != base[key]):
+                raise Refusal("Playground variant base digests do not match its source")
+        base_binary = canonical(base.get("binary"))
+        try:
+            base_binary.relative_to(base_path.parent / "bundle")
+        except ValueError as exc:
+            raise Refusal("Playground variant base executable escapes its source artifact") from exc
+        self._check_digest(base_binary, base["binary_sha256"])
+        signing = base.get("code_signing")
+        if (not isinstance(signing, dict) or signing.get("verified") is not True
+                or not isinstance(signing.get("identity"), str)
+                or (signing["identity"] != "-" and not re.fullmatch(r"[0-9a-fA-F]{40}", signing["identity"]))
+                or signing.get("kind") != ("ad-hoc" if signing["identity"] == "-" else "certificate")
+                or manifest.get("code_signing") != dict(signing, notarized=False)):
+            raise Refusal("Playground variant signing does not match its verified base")
+        for key in ("base_artifact_manifest", "base_binary_sha256", "base_tree_sha256",
+                    "binary_sha256", "tree_sha256", "code_signing"):
+            if record.get(key) != manifest.get(key):
+                raise Refusal("Launcher variant provenance differs from its artifact")
+        expected_bundle = root / "bundle" / "Zen Playground.app"
+        if (canonical(manifest.get("bundle"), directory=True) != expected_bundle
+                or canonical(manifest.get("binary")) != expected_bundle / "Contents" / "MacOS" / "zen"):
+            raise Refusal("Playground variant bundle is outside its exact artifact")
+        return root
+
+    def _branding(self, bundle, manifest):
+        branding = manifest.get("branding", {})
+        if (not isinstance(branding, dict) or branding.get("bundle_id") != MAC_PLAYGROUND_BUNDLE_ID
+                or branding.get("bundle_name") != "Zen Playground"):
+            raise Refusal("Playground variant branding receipt is invalid")
+        path = canonical(bundle / "Contents" / "Info.plist")
+        try:
+            info = plistlib.loads(path.read_bytes())
+        except (OSError, ValueError, plistlib.InvalidFileException) as exc:
+            raise Refusal("Playground Info.plist is invalid") from exc
+        expected = {"CFBundleIdentifier": MAC_PLAYGROUND_BUNDLE_ID, "CFBundleName": "Zen Playground",
+                    "CFBundleDisplayName": "Zen Playground", "CFBundleIconFile": MAC_PLAYGROUND_ICON}
+        if (not isinstance(info, dict) or any(info.get(key) != value for key, value in expected.items())
+                or "CFBundleIconName" in info
+                or any(key in info for key in ("CFBundleURLTypes", "CFBundleDocumentTypes", "NSUserActivityTypes"))):
+            raise Refusal("Playground bundle identity or URL handlers changed")
+        self._check_digest(canonical(bundle / "Contents" / "Resources" / MAC_PLAYGROUND_ICON), branding.get("icon_sha256"))
 
     def validate(self):
         state = load_json(self.state_path)
@@ -193,16 +265,18 @@ class Guard:
                 canonical(candidate)
         binary = canonical(record.get("binary"))
         artifacts = self.repo / ".zen-local" / "artifacts" / record["source_sha"]
-        try:
-            manifest_path = canonical(record.get("artifact_manifest"))
-            manifest_path.relative_to(artifacts)
-        except (ValueError, TypeError) as exc:
-            raise Refusal("Executable or manifest is outside the exact source artifact") from exc
+        manifest_path = canonical(record.get("artifact_manifest"))
         manifest = load_json(manifest_path, max_size=16 * 1024 * 1024)
         if (type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1 or manifest.get("source_sha") != record["source_sha"]
                 or not isinstance(manifest.get("binary_sha256"), str)
                 or not re.fullmatch(r"[0-9a-f]{64}", manifest["binary_sha256"])):
             raise Refusal("Artifact manifest does not match launcher identity")
+        variant = manifest.get("variant") == "playground"
+        if variant:
+            artifacts = self._variant(record, manifest_path, manifest)
+        elif (manifest_path != artifacts / "manifest.json" or record.get("variant", "main") != "main"
+              or manifest.get("variant", "main") != "main"):
+            raise Refusal("Executable or manifest is outside the exact source artifact")
         origin_binary = canonical(manifest.get("binary"))
         try:
             origin_binary.relative_to(artifacts)
@@ -221,6 +295,13 @@ class Guard:
                     or deployment.get("binary_sha256") != manifest["binary_sha256"]
                     or deployment.get("tree_sha256") != manifest.get("tree_sha256")):
                 raise Refusal("Secondary playground deployment does not match its immutable source artifact")
+            if variant and any(deployment.get(key) != record.get(key) for key in (
+                    "variant", "base_artifact_manifest", "base_binary_sha256", "base_tree_sha256", "code_signing")):
+                raise Refusal("Secondary playground deployment variant provenance differs")
+        if variant:
+            self._branding(Path(manifest["bundle"]), manifest)
+            if binary != origin_binary:
+                self._branding(MAC_PLAYGROUND_APP, manifest)
         info = binary.stat()
         cache_key = (str(binary), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, manifest["binary_sha256"])
         if self._hash_cache != cache_key:

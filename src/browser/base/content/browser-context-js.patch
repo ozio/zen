@@ -1,0 +1,13 @@
+diff --git a/browser/base/content/browser-context.js b/browser/base/content/browser-context.js
+--- a/browser/base/content/browser-context.js
++++ b/browser/base/content/browser-context.js
+@@ -209,6 +209,9 @@
+           });
+           break;
+         }
++        case "context-zen-translate-page":
++          gContextMenu.toggleTranslatePage().catch(console.error);
++          break;
+         case "context-translate-selection":
+           gContextMenu.openSelectTranslationsPanel(event);
+           break;

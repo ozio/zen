@@ -1,14 +1,93 @@
 diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
-index a9173d534626f18adcbfe570cbcdc0cd929cc31d..e09340242048a21ce6b3bd4d26bedc606354235e 100644
 --- a/browser/base/content/nsContextMenu.sys.mjs
 +++ b/browser/base/content/nsContextMenu.sys.mjs
-@@ -373,6 +373,9 @@ export class nsContextMenu {
+@@ -33,6 +33,8 @@
+   TranslationsUtils:
+     "chrome://global/content/translations/TranslationsUtils.mjs",
+   WebsiteFilter: "resource:///modules/policies/WebsiteFilter.sys.mjs",
++  ZenPageTranslations:
++    "chrome://browser/content/translations/ZenPageTranslations.sys.mjs",
+ });
+ 
+ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+@@ -115,6 +117,9 @@
+    * @type {Promise<{sourceLanguage: string, targetLanguage: string}>}
+    */
+   #translationsLangPairPromise;
++
++  /** The full-page translation item belongs to this menu and its document. */
++  #pageTranslations = null;
+ 
+   /**
+    * The value of the `main-context-menu-new-feature-badge` l10n string. Fetched
+@@ -356,6 +361,7 @@
+   } // setContext
+ 
+   hiding(aXulMenu) {
++    this.#pageTranslations?.destroy();
+     if (this.actor) {
+       this.actor.hiding();
+     }
+@@ -399,6 +405,9 @@
+     this.initPasswordControlItems();
      this.initTextFragmentItems();
      this.pdfjsContextMenu.initItems();
- 
++
 +    this.showItem("context-zenSplitLink", this.onLink && !this.onMailtoLink && !this.onTelLink);
 +    this.showItem("context-zenOpenLinkInGlance", this.onLink && !this.onMailtoLink && !this.onTelLink); 
-+
+ 
      this.showHideSeparators(aXulMenu);
      if (!aXulMenu.showHideSeparators) {
-       // Set the showHideSeparators function on the menu itself so that
+@@ -924,6 +933,7 @@
+ 
+     this.showAndFormatSearchContextItem();
+     this.showTranslateSelectionItem();
++    this.showTranslatePageItem();
+     lazy.GenAI.buildAskChatMenu(document.getElementById("context-ask-chat"), {
+       browser: this.browser,
+       selectionInfo: this.selectionInfo,
+@@ -2653,6 +2663,44 @@
+     this.window.openTrustedLinkIn(drmInfoURL, dest);
+   }
+ 
++  /** Add a full-page action only to the page menu, preserving selection menus. */
++  showTranslatePageItem() {
++    const item = this.document.getElementById("context-zen-translate-page");
++    item.hidden = true;
++    item.disabled = true;
++    if (
++      !this.inTabBrowser ||
++      this.inAboutDevtoolsToolbox ||
++      this.inWebExtBrowser ||
++      this.inFrame ||
++      this.inSyntheticDoc ||
++      this.isContentSelected ||
++      this.isTextSelected ||
++      this.onLink ||
++      this.onPlainTextLink ||
++      this.onImage ||
++      this.onCanvas ||
++      this.onVideo ||
++      this.onAudio ||
++      this.onTextInput ||
++      this.onEditable ||
++      this.window.browsingContext.isDocumentPiP
++    ) {
++      return;
++    }
++    this.#pageTranslations = new lazy.ZenPageTranslations(
++      this.browser,
++      this.actor.manager,
++      item,
++      () => this.showHideSeparators(item.parentNode)
++    );
++    this.#pageTranslations.init().catch(console.error);
++  }
++
++  toggleTranslatePage() {
++    return this.#pageTranslations?.toggle() ?? Promise.resolve(false);
++  }
++
+   /**
+    * Opens the SelectTranslationsPanel singleton instance.
+    *

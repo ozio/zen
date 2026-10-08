@@ -211,6 +211,7 @@ class ContainmentTests(SandboxTest):
         process = SimpleNamespace(pid=1234, poll=lambda: None)
         connection = SimpleNamespace(__enter__=lambda _: None)
         with patch("build.verify_artifact", return_value=manifest), patch("build.assert_stopped"), \
+                patch("build.platform.system", return_value="Linux"), \
                 patch("build.port_available"), patch("build.subprocess.Popen", return_value=process) as launch, \
                 patch("build.socket.create_connection") as connect:
             connect.return_value.__enter__.return_value.recv.return_value = b'50:{"marionetteProtocol":3}'
@@ -283,6 +284,18 @@ class MacPlaygroundTests(SandboxTest):
         self.patch_processes = patch("core.process_list", return_value=[])
         self.patch_processes.start()
         self.addCleanup(self.patch_processes.stop)
+        self.patch_platform = patch("build.platform.system", return_value="Darwin")
+        self.patch_platform.start()
+        self.addCleanup(self.patch_platform.stop)
+        self.patch_signature = patch("build.verify_mac_signature", return_value=True)
+        self.patch_signature.start()
+        self.addCleanup(self.patch_signature.stop)
+        self.patch_registration = patch("build._register_mac_playground")
+        self.patch_registration.start()
+        self.addCleanup(self.patch_registration.stop)
+        icon = self.root / build.MAC_PLAYGROUND_ICON
+        icon.parent.mkdir(parents=True)
+        icon.write_bytes((Path(__file__).resolve().parents[3] / build.MAC_PLAYGROUND_ICON).read_bytes())
 
     def artifact(self, sha=FORK):
         root = self.ctx.local / "artifacts" / sha
@@ -291,17 +304,25 @@ class MacPlaygroundTests(SandboxTest):
         binary.parent.mkdir(parents=True)
         binary.write_bytes(("synthetic executable " + sha).encode())
         binary.chmod(0o755)
-        (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable":"zen"}))
+        (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps({
+            "CFBundleExecutable": "zen", "CFBundleIdentifier": "app.zen-browser.zen",
+            "CFBundleURLTypes": [{"CFBundleURLSchemes": ["http", "https"]}],
+            "CFBundleDocumentTypes": [{"CFBundleTypeExtensions": ["html"]}],
+            "NSUserActivityTypes": ["NSUserActivityTypeBrowsingWeb"], "CFBundleIconFile": "firefox.icns"}))
         resources = bundle / "Contents" / "Resources"
         resources.mkdir()
         (resources / "application.ini").write_text("[App]\nSourceStamp=%s\n" % sha)
+        (resources / "firefox.icns").write_bytes(b"original icon")
         files = core.tree_inventory(bundle)
         result = {"schema_version":1, "source_sha":sha, "bundle":str(bundle), "binary":str(binary),
                   "files":files, "tree_sha256":core.inventory_digest(files),
-                  "binary_sha256":core.sha256_file(binary), "platform":core.host_platform()}
+                  "binary_sha256":core.sha256_file(binary), "platform":core.host_platform(),
+                  "code_signing": {"identity": "-", "kind": "ad-hoc", "verified": True,
+                                   "verification": "codesign --verify --deep --strict", "notarized": False}}
         core.atomic_json(root / "manifest.json", result)
         core.make_read_only(root)
-        return result
+        with patch.object(self.ctx.runner, "run", return_value=completed()):
+            return build.prepare_playground_artifact(self.ctx, sha)
 
     def test_secondary_copy_is_identical_owned_and_reusable(self):
         manifest = self.artifact()
@@ -309,7 +330,9 @@ class MacPlaygroundTests(SandboxTest):
         self.assertEqual(core.tree_inventory(self.target), manifest["files"])
         receipt = core.read_json(Path(result["deployment_manifest"]))
         self.assertEqual(receipt["source_sha"], FORK)
-        self.assertEqual(receipt["artifact_manifest"], str(self.ctx.local / "artifacts" / FORK / "manifest.json"))
+        self.assertEqual(receipt["artifact_manifest"], str(self.ctx.local / "playground-artifacts" / FORK / "manifest.json"))
+        self.assertEqual(receipt["base_artifact_manifest"], str(self.ctx.local / "artifacts" / FORK / "manifest.json"))
+        self.assertEqual(receipt["variant"], "playground")
         with patch("build.shutil.copytree") as copy:
             self.assertEqual(build.stage_mac_playground(self.ctx, manifest), result)
             copy.assert_not_called()
@@ -359,7 +382,6 @@ class MacPlaygroundTests(SandboxTest):
         current = self.ctx.local / "deployments" / "playground" / "current.json"
         before = current.read_bytes()
         candidate = self.artifact(HEAD)
-        candidate["code_signing"] = {"verified": True}
         with patch("build.verify_mac_signature", side_effect=core.DevError("signature metadata missing")):
             with self.assertRaisesRegex(core.DevError, "signature metadata missing"):
                 build.stage_mac_playground(self.ctx, candidate)

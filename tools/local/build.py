@@ -1,9 +1,11 @@
 """Build, package and launch only a dedicated local playground."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
+import plistlib
 import re
 import shutil
 import socket
@@ -18,9 +20,15 @@ from core import (Context, DevError, assert_stopped, atomic_json, browser_binary
                   no_symlink_ancestors, port_available, read_json, require_sha,
                   sha256_file, source_stamp, toolchains, tree_inventory, utc_now, verify_mac_signature)
 from download import prefetch_firefox
+from imports import prepare_external_overlays
 
 MARKER = "ZEN PLAYGROUND"
 MAC_PLAYGROUND_APP = Path("/Applications/Zen Playground.app")
+MAC_PLAYGROUND_BUNDLE_ID = "io.ozio.zen.playground"
+MAC_PLAYGROUND_ICON = Path("configs/playground-branding/zen-playground.icns")
+MAC_PLAYGROUND_ICON_NAME = "zen-playground.icns"
+MAC_PLAYGROUND_HANDLER_KEYS = ("CFBundleURLTypes", "CFBundleDocumentTypes", "NSUserActivityTypes")
+MAC_LSREGISTER = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
 MANAGED_CONFIG = ("# Personal native development build; upstream source remains unchanged.\n"
                   'mk_add_options MOZ_MAKE_FLAGS="-j8"\n'
                   "ac_add_options --disable-debug-symbols\n"
@@ -90,6 +98,7 @@ def bootstrap(ctx: Context, args: Any) -> Dict[str, Any]:
                                    "--no-interactive", "bootstrap", "--application-choice=browser"],
                                   ctx.root / "engine", env,
                                   ctx.managed(ctx.local / "logs" / "bootstrap.log"))
+            import_preparation = prepare_external_overlays(ctx, env)
             ctx.runner.logged([str(node), str(npm), "run", "import"], ctx.root, env,
                               ctx.managed(ctx.local / "logs" / "import.log"))
             # The upstream all-languages shell script mutates global Git and ~/tools.
@@ -107,6 +116,7 @@ def bootstrap(ctx: Context, args: Any) -> Dict[str, Any]:
                    "system_bootstrap": not args.skip_engine and not args.skip_system_bootstrap}
         if not args.skip_engine:
             receipt["source_download"] = source_download
+            receipt["import_preparation"] = import_preparation
         atomic_json(ctx.managed(ctx.local / "bootstrap.json"), receipt)
     return receipt
 
@@ -195,6 +205,8 @@ def verify_artifact(ctx: Context, sha: str) -> Dict[str, Any]:
     manifest = read_json(manifest_path)
     if manifest.get("schema_version") != 1 or manifest.get("source_sha") != sha:
         raise DevError("Artifact source stamp/schema mismatch")
+    if manifest.get("variant", "main") != "main":
+        raise DevError("Main artifact cannot be a Playground variant")
     bundle = ctx.managed(Path(manifest.get("bundle", "")))
     binary = ctx.managed(Path(manifest.get("binary", "")))
     if not bundle.is_relative_to(root / "bundle") or not binary.is_relative_to(bundle):
@@ -211,9 +223,201 @@ def verify_artifact(ctx: Context, sha: str) -> Dict[str, Any]:
     # POSIX write bits reveal accidental mutation even if contents happen to match.
     if platform.system() != "Windows" and any(path.stat().st_mode & 0o222 for path in [root, *root.rglob("*")]):
         raise DevError("Artifact has writable files; expected a sealed standalone package")
-    if manifest.get("code_signing", {}).get("verified") is True:
+    signing = manifest.get("code_signing", {})
+    if not isinstance(signing, dict):
+        raise DevError("Artifact signing metadata must be a dictionary")
+    if signing.get("verified") is True:
         verify_mac_signature(ctx, bundle, required=True)
     return manifest
+
+
+def playground_artifact_path(ctx: Context, sha: str) -> Path:
+    return ctx.managed(ctx.local / "playground-artifacts" / require_sha(sha) / "manifest.json")
+
+
+def _playground_signing(base: Dict[str, Any]) -> Dict[str, Any]:
+    signing = base.get("code_signing", {})
+    identity = signing.get("identity") if isinstance(signing, dict) else None
+    if (not isinstance(identity, str) or (identity != "-" and not re.fullmatch(r"[0-9a-fA-F]{40}", identity))
+            or signing.get("verified") is not True
+            or signing.get("kind") != ("ad-hoc" if identity == "-" else "certificate")):
+        raise DevError("Playground derivation needs the base package's verified exact macOS signing identity")
+    # No identity selection at this step: reuse only the choice made for the base.
+    return dict(signing, notarized=False)
+
+
+def _playground_plist(bundle: Path) -> Dict[str, Any]:
+    try:
+        value = plistlib.loads((bundle / "Contents" / "Info.plist").read_bytes())
+    except (OSError, ValueError, plistlib.InvalidFileException) as error:
+        raise DevError("Playground package has an invalid Info.plist") from error
+    if not isinstance(value, dict):
+        raise DevError("Playground Info.plist must be a dictionary")
+    return value
+
+
+def _require_main_bundle_identity(bundle: Path) -> None:
+    identifier = _playground_plist(bundle).get("CFBundleIdentifier")
+    if not isinstance(identifier, str) or not identifier or identifier == MAC_PLAYGROUND_BUNDLE_ID:
+        raise DevError("Playground must derive from a separately identified main package")
+
+
+def _validate_playground_icon(data: bytes) -> None:
+    if len(data) <= 8 or data[:4] != b"icns" or int.from_bytes(data[4:8], "big") != len(data):
+        raise DevError("Playground icon must be a complete macOS .icns asset")
+    offset = 8
+    image_found = False
+    while offset < len(data):
+        if len(data) - offset < 8:
+            raise DevError("Playground icon has a truncated .icns record")
+        record_type = data[offset:offset + 4]
+        length = int.from_bytes(data[offset + 4:offset + 8], "big")
+        if length <= 8 or offset + length > len(data):
+            raise DevError("Playground icon has an invalid .icns record length")
+        # The supplied iconutil asset contains PNG and ARGB representations.
+        if record_type in (b"ic04", b"ic05", b"ic07", b"ic08", b"ic09", b"ic10",
+                           b"ic11", b"ic12", b"ic13", b"ic14", b"icp4", b"icp5", b"icp6"):
+            image_found = True
+        offset += length
+    if not image_found:
+        raise DevError("Playground .icns asset contains no application icon representations")
+
+
+def _verify_playground_branding(bundle: Path, branding: Dict[str, Any]) -> None:
+    if not isinstance(branding, dict):
+        raise DevError("Playground branding receipt is missing")
+    info = _playground_plist(bundle)
+    expected = {"CFBundleIdentifier": MAC_PLAYGROUND_BUNDLE_ID,
+                "CFBundleName": "Zen Playground", "CFBundleDisplayName": "Zen Playground",
+                "CFBundleIconFile": MAC_PLAYGROUND_ICON_NAME}
+    if any(info.get(key) != value for key, value in expected.items()):
+        raise DevError("Playground application identity/icon differs from its variant")
+    if any(key in info for key in MAC_PLAYGROUND_HANDLER_KEYS):
+        raise DevError("Playground must not register URL, document or user activity handlers")
+    if "CFBundleIconName" in info:
+        raise DevError("Playground must use its dedicated icon file instead of a named asset catalog icon")
+    if branding.get("bundle_id") != MAC_PLAYGROUND_BUNDLE_ID or branding.get("bundle_name") != "Zen Playground":
+        raise DevError("Playground branding receipt identity differs")
+    icon = bundle / "Contents" / "Resources" / MAC_PLAYGROUND_ICON_NAME
+    if not icon.is_file() or sha256_file(icon) != branding.get("icon_sha256"):
+        raise DevError("Playground icon differs from the sealed branding receipt")
+    _validate_playground_icon(icon.read_bytes())
+
+
+def verify_playground_artifact(ctx: Context, sha: str) -> Dict[str, Any]:
+    """Verify the separately sealed macOS variant and its immutable main origin."""
+    if platform.system() != "Darwin":
+        raise DevError("Playground application branding is supported only on macOS")
+    sha = require_sha(sha)
+    base = verify_artifact(ctx, sha)
+    _require_main_bundle_identity(Path(base["bundle"]))
+    path = playground_artifact_path(ctx, sha)
+    root = path.parent
+    manifest = read_json(path)
+    expected = {"schema_version": 1, "variant": "playground", "source_sha": sha,
+                "base_artifact_manifest": str(ctx.local / "artifacts" / sha / "manifest.json"),
+                "base_binary_sha256": base["binary_sha256"], "base_tree_sha256": base["tree_sha256"],
+                "platform": host_platform(), "code_signing": _playground_signing(base)}
+    if any(manifest.get(key) != value for key, value in expected.items()):
+        raise DevError("Playground variant provenance/signing differs from its verified main artifact")
+    bundle = ctx.managed(Path(manifest.get("bundle", "")))
+    binary = ctx.managed(Path(manifest.get("binary", "")))
+    if bundle != root / "bundle" / "Zen Playground.app" or not binary.is_relative_to(bundle):
+        raise DevError("Playground artifact paths escape their immutable SHA directory")
+    if browser_binary(bundle) != binary or source_stamp(bundle) != sha:
+        raise DevError("Playground binary/source stamp differs from its manifest")
+    files = tree_inventory(bundle)
+    if files != manifest.get("files") or inventory_digest(files) != manifest.get("tree_sha256"):
+        raise DevError("Immutable Playground artifact files changed")
+    if sha256_file(binary) != manifest.get("binary_sha256"):
+        raise DevError("Immutable Playground binary changed")
+    if any(item.stat().st_mode & 0o222 for item in [root, *root.rglob("*")]):
+        raise DevError("Playground artifact has writable files; expected a sealed standalone package")
+    branding = manifest.get("branding", {})
+    if not isinstance(branding, dict) or branding.get("icon_source") != str(ctx.root / MAC_PLAYGROUND_ICON):
+        raise DevError("Playground branding source is not this checkout's dedicated icon")
+    _verify_playground_branding(bundle, branding)
+    if list(bundle.rglob(".purgecaches")):
+        raise DevError("Playground package contains consumable Gecko cache sentinels")
+    verify_mac_signature(ctx, bundle, required=True)
+    return manifest
+
+
+def prepare_playground_artifact(ctx: Context, sha: str) -> Dict[str, Any]:
+    """Derive once from a verified main app. Caller owns the operation lock."""
+    if platform.system() != "Darwin":
+        raise DevError("Playground application branding is supported only on macOS")
+    sha = require_sha(sha)
+    base = verify_artifact(ctx, sha)
+    _require_main_bundle_identity(Path(base["bundle"]))
+    signing = _playground_signing(base)
+    icon = ctx.root / MAC_PLAYGROUND_ICON
+    no_symlink_ancestors(icon)
+    if not icon.is_file():
+        raise DevError("Playground icon is missing: %s" % icon)
+    icon_bytes = icon.read_bytes()
+    _validate_playground_icon(icon_bytes)
+    icon_digest = hashlib.sha256(icon_bytes).hexdigest()
+    final = playground_artifact_path(ctx, sha).parent
+    if final.exists():
+        existing = verify_playground_artifact(ctx, sha)
+        if existing["branding"]["icon_sha256"] != icon_digest:
+            raise DevError("An immutable Playground artifact with a different icon exists for this SHA")
+        return existing
+    ctx.free_space(2 * 1024 ** 3)
+    pending = ctx.managed(final.with_name(".pending-" + uuid.uuid4().hex), create_parent=True)
+    target = pending / "bundle" / "Zen Playground.app"
+    target.parent.mkdir(parents=True, mode=0o700)
+    copy_tree(Path(base["bundle"]), target)
+    if tree_inventory(target) != base["files"]:
+        raise DevError("Playground base copy is incomplete; pending app retained for inspection")
+    verify_mac_signature(ctx, target, required=True)
+    for item in [target, *target.rglob("*")]:
+        if not is_link(item):
+            os.chmod(item, item.stat().st_mode | 0o200 | (0o100 if item.is_dir() else 0))
+    info = _playground_plist(target)
+    info.update(CFBundleIdentifier=MAC_PLAYGROUND_BUNDLE_ID, CFBundleName="Zen Playground",
+                CFBundleDisplayName="Zen Playground", CFBundleIconFile=MAC_PLAYGROUND_ICON_NAME)
+    for key in MAC_PLAYGROUND_HANDLER_KEYS:
+        info.pop(key, None)
+    info.pop("CFBundleIconName", None)
+    (target / "Contents" / "Info.plist").write_bytes(plistlib.dumps(info, sort_keys=False))
+    (target / "Contents" / "Resources" / MAC_PLAYGROUND_ICON_NAME).write_bytes(icon_bytes)
+    for sentinel in target.rglob(".purgecaches"):
+        sentinel.unlink()
+    # Keep nested entitlements and hardened-runtime flags, but let the designated
+    # requirement use the new bundle ID instead of inheriting the main app's ID.
+    ctx.runner.run(["/usr/bin/codesign", "--force", "--deep", "--preserve-metadata=entitlements,flags,runtime",
+                    "--sign", signing["identity"], str(target)], ctx.root)
+    verify_mac_signature(ctx, target, required=True)
+    branding = {"bundle_id": MAC_PLAYGROUND_BUNDLE_ID, "bundle_name": "Zen Playground",
+                "icon_source": str(icon), "icon_sha256": icon_digest}
+    _verify_playground_branding(target, branding)
+    binary = browser_binary(target)
+    records = tree_inventory(target)
+    manifest = {"schema_version": 1, "variant": "playground", "source_sha": sha,
+                "created_at": utc_now(), "platform": host_platform(),
+                "base_artifact_manifest": str(ctx.local / "artifacts" / sha / "manifest.json"),
+                "base_binary_sha256": base["binary_sha256"], "base_tree_sha256": base["tree_sha256"],
+                "bundle": str(final / "bundle" / target.name),
+                "binary": str(final / binary.relative_to(pending)),
+                "binary_sha256": sha256_file(binary), "tree_sha256": inventory_digest(records),
+                "files": records, "code_signing": signing, "branding": branding,
+                "updater_disabled": base.get("updater_disabled") is True}
+    # Read back the immutable base again before publishing the derivative.
+    if verify_artifact(ctx, sha) != base:
+        raise DevError("Main artifact changed during Playground packaging; pending variant retained")
+    atomic_json(pending / "manifest.json", manifest)
+    make_read_only(pending)
+    os.replace(pending, final)
+    return verify_playground_artifact(ctx, sha)
+
+
+def package_playground(ctx: Context, args: Any) -> Dict[str, Any]:
+    if platform.system() != "Darwin":
+        raise DevError("Playground application branding is supported only on macOS")
+    with ctx.lock():
+        return prepare_playground_artifact(ctx, require_sha(args.sha or ctx.sha()))
 
 
 def package(ctx: Context, args: Any) -> Dict[str, Any]:
@@ -318,17 +522,36 @@ def launch_argv(binary: Path, profile: Path, home: Path) -> list:
             "--remote-allow-system-access", "--new-window", home.as_uri()]
 
 
+def _playground_provenance(ctx: Context, manifest: Dict[str, Any]) -> Dict[str, Any]:
+    return {"variant": "playground", "artifact_manifest": str(playground_artifact_path(ctx, manifest["source_sha"])),
+            "base_artifact_manifest": manifest["base_artifact_manifest"],
+            "base_binary_sha256": manifest["base_binary_sha256"], "base_tree_sha256": manifest["base_tree_sha256"],
+            "binary_sha256": manifest["binary_sha256"], "tree_sha256": manifest["tree_sha256"],
+            "code_signing": manifest["code_signing"]}
+
+
+def _register_mac_playground(ctx: Context, target: Path, register: bool) -> None:
+    # Scope LaunchServices changes to the already verified secondary application.
+    # Never reset its database or change any user's default-handler selection.
+    if target != MAC_PLAYGROUND_APP:
+        raise DevError("LaunchServices registration target is not the owned Playground app")
+    ctx.runner.run([str(MAC_LSREGISTER), "-f" if register else "-u", str(target)], ctx.root)
+
+
 def stage_mac_playground(ctx: Context, manifest: Dict[str, Any]) -> Dict[str, str]:
-    """Install only the owned secondary app; the daily Zen.app is a different path."""
+    """Install only the verified variant, or migrate an owned legacy main copy."""
+    sha = require_sha(manifest.get("source_sha"))
+    verified = verify_playground_artifact(ctx, sha)
+    if manifest != verified:
+        raise DevError("Playground staging input differs from its sealed variant manifest")
     target = MAC_PLAYGROUND_APP
     no_symlink_ancestors(target)
     assert_stopped([target], ctx.runner)
     current = ctx.managed(ctx.local / "deployments" / "playground" / "current.json", create_parent=True)
-    sha = manifest["source_sha"]
     receipt_path = current.with_name(sha + ".json")
-    origin = ctx.local / "artifacts" / sha / "manifest.json"
-    binary = target / "Contents" / "MacOS" / "zen"
+    binary = target / Path(manifest["binary"]).relative_to(Path(manifest["bundle"]))
     old_receipt = None
+    old = None
     if target.exists():
         if not current.is_file():
             raise DevError("Existing Zen Playground.app has no ownership receipt; refusing to replace it")
@@ -336,19 +559,27 @@ def stage_mac_playground(ctx: Context, manifest: Dict[str, Any]) -> Dict[str, st
         if (old_receipt.get("root") != str(ctx.root) or old_receipt.get("bundle") != str(target)
                 or old_receipt.get("binary") != str(binary)):
             raise DevError("Existing playground application belongs to another checkout")
-        old = verify_artifact(ctx, require_sha(old_receipt.get("source_sha")))
+        old_sha = require_sha(old_receipt.get("source_sha"))
+        if old_receipt.get("variant") == "playground":
+            old = verify_playground_artifact(ctx, old_sha)
+            expected = _playground_provenance(ctx, old)
+        elif "variant" not in old_receipt:
+            old = verify_artifact(ctx, old_sha)
+            expected = {"artifact_manifest": str(ctx.local / "artifacts" / old_sha / "manifest.json"),
+                        "binary_sha256": old["binary_sha256"], "tree_sha256": old["tree_sha256"]}
+        else:
+            raise DevError("Unknown Playground deployment variant")
         if (old_receipt.get("schema_version") != 1
-                or old_receipt.get("artifact_manifest") != str(ctx.local / "artifacts" / old["source_sha"] / "manifest.json")
-                or old_receipt.get("binary_sha256") != old["binary_sha256"]
-                or old_receipt.get("tree_sha256") != old["tree_sha256"]):
+                or any(old_receipt.get(key) != value for key, value in expected.items())):
             raise DevError("Existing playground ownership receipt differs from its artifact")
         if tree_inventory(target) != old["files"] or sha256_file(binary) != old["binary_sha256"]:
             raise DevError("Existing playground app differs from its owned artifact; preserve and inspect it")
-        if old["source_sha"] == sha:
+        if old.get("code_signing", {}).get("verified") is True:
+            verify_mac_signature(ctx, target, required=True)
+        if old["source_sha"] == sha and old_receipt.get("variant") == "playground":
             if not receipt_path.is_file() or read_json(receipt_path) != old_receipt:
                 raise DevError("Playground deployment receipt is inconsistent")
-            if old.get("code_signing", {}).get("verified") is True:
-                verify_mac_signature(ctx, target, required=True)
+            _register_mac_playground(ctx, target, register=True)
             return {"binary":str(binary), "bundle":str(target), "deployment_manifest":str(receipt_path)}
     if not os.access(target.parent, os.W_OK):
         raise DevError("Applications folder is not writable. Use run playground --in-artifact; Enpass may require an Applications-folder installation.")
@@ -357,30 +588,59 @@ def stage_mac_playground(ctx: Context, manifest: Dict[str, Any]) -> Dict[str, st
     copy_tree(Path(manifest["bundle"]), pending)
     if tree_inventory(pending) != manifest["files"]:
         raise DevError("Secondary playground copy is incomplete; pending app retained for inspection")
-    if manifest.get("code_signing", {}).get("verified") is True:
-        verify_mac_signature(ctx, pending, required=True)
+    verify_mac_signature(ctx, pending, required=True)
     moved_old = False
     moved_new = False
+    old_unregistered = False
+    new_registration_attempted = False
     try:
+        assert_stopped([target], ctx.runner)
+        if old_receipt is None:
+            if target.exists():
+                raise DevError("An unowned Playground application appeared during copying; preserving it")
+        elif (not target.is_dir() or read_json(current) != old_receipt
+              or tree_inventory(target) != old["files"]):
+            raise DevError("Owned Playground app or receipt changed during copying; preserving it")
+        elif old.get("code_signing", {}).get("verified") is True:
+            verify_mac_signature(ctx, target, required=True)
         if target.exists():
+            old_unregistered = True
+            _register_mac_playground(ctx, target, register=False)
             os.replace(target, previous)
             moved_old = True
         os.replace(pending, target)
         moved_new = True
-        if source_stamp(target) != sha or sha256_file(binary) != manifest["binary_sha256"]:
+        if (source_stamp(target) != sha or sha256_file(binary) != manifest["binary_sha256"]
+                or tree_inventory(target) != manifest["files"]):
             raise DevError("Secondary application identity mismatch")
-        if manifest.get("code_signing", {}).get("verified") is True:
-            verify_mac_signature(ctx, target, required=True)
+        _verify_playground_branding(target, manifest["branding"])
+        verify_mac_signature(ctx, target, required=True)
+        new_registration_attempted = True
+        _register_mac_playground(ctx, target, register=True)
         receipt = {"schema_version":1, "root":str(ctx.root), "source_sha":sha,
-                   "bundle":str(target), "binary":str(binary), "binary_sha256":manifest["binary_sha256"],
-                   "artifact_manifest":str(origin), "tree_sha256":manifest["tree_sha256"], "created_at":utc_now()}
+                   "bundle":str(target), "binary":str(binary), "created_at":utc_now(),
+                   **_playground_provenance(ctx, manifest)}
         atomic_json(ctx.managed(receipt_path), receipt)
         atomic_json(current, receipt)
-    except BaseException:
+    except BaseException as error:
+        registration_errors = []
         if moved_new and target.exists():
+            if new_registration_attempted:
+                try:
+                    _register_mac_playground(ctx, target, register=False)
+                except DevError as registration_error:
+                    registration_errors.append(str(registration_error))
             os.replace(target, pending)
         if moved_old:
             os.replace(previous, target)
+        if old_unregistered and target.exists():
+            try:
+                _register_mac_playground(ctx, target, register=True)
+            except DevError as registration_error:
+                registration_errors.append(str(registration_error))
+        if registration_errors:
+            raise DevError("Playground staging failed and restored files, but LaunchServices recovery failed: %s" %
+                           "; ".join(registration_errors)) from error
         raise
     if moved_old:
         # This exact old copy was verified above; the immutable source is kept.
@@ -394,7 +654,8 @@ def stage_mac_playground(ctx: Context, manifest: Dict[str, Any]) -> Dict[str, st
 def run_playground(ctx: Context, args: Any) -> Dict[str, Any]:
     with ctx.lock():
         sha = require_sha(args.sha or ctx.sha())
-        manifest = verify_artifact(ctx, sha)
+        manifest = (prepare_playground_artifact(ctx, sha) if platform.system() == "Darwin"
+                    else verify_artifact(ctx, sha))
         profile = validate_profile(ctx)
         previous = playground_state(ctx)
         assert_stopped([profile, Path(manifest["binary"])], ctx.runner, previous)
@@ -441,6 +702,8 @@ def run_playground(ctx: Context, args: Any) -> Dict[str, Any]:
                  "pid": process.pid, "source_sha": sha, "marionette_host": "127.0.0.1",
                  "marionette_port": args.port, "started_at": utc_now(), "marker": MARKER,
                  "session_id": session, "artifact_manifest": str(ctx.local / "artifacts" / sha / "manifest.json")}
+        if platform.system() == "Darwin":
+            value.update(_playground_provenance(ctx, manifest))
         if deployment:
             value["deployment_manifest"] = deployment["deployment_manifest"]
         atomic_json(ctx.managed(ctx.local / "state.json"), {"schema_version": 1, "playground": value})
@@ -460,6 +723,8 @@ def run_playground(ctx: Context, args: Any) -> Dict[str, Any]:
             time.sleep(0.25)
         if not ready:
             raise DevError("Launched PID %s but Marionette did not become ready; state retained for inspection" % process.pid)
+        if platform.system() == "Darwin":
+            verify_mac_signature(ctx, Path(value["app_bundle"]), required=True)
         return value
 
 

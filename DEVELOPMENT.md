@@ -156,6 +156,8 @@ python tools/local/dev.py build --jobs 8
 python tools/local/dev.py package
 ```
 
+Before Surfer reimports an external patch, the wrapper temporarily reverses already applied canonical patches that overlap its targets, in reverse order. This prevents a later Zen overlay from blocking the earlier patch's reverse/forward cycle on a prepared engine. Scoped source snapshots and receipts are retained under `.zen-local/import-preparation/`, and the normal import reapplies both layers. If a patch matches neither applied nor unapplied source, preparation refuses rather than discarding engine work. Changing an existing patch can still require reviewing/reversing its previously imported version first; preserve/export intended engine-only changes before doing so.
+
 Do not re-import over unexported work. Ordinary edits to already linked UI files can use `build --ui` for a quick local iteration; the final promotable package still needs a full, usually incremental, CLI build at the committed SHA.
 
 ### macOS package signing and Enpass
@@ -199,7 +201,9 @@ python tools/local/dev.py run playground --sha FULL_SOURCE_SHA --port 2828
 
 The default Marionette port is 2828; an alternate port must be in 1024–65535. Change it explicitly if occupied; do not kill the process owning an unfamiliar port. The launcher requires the verified immutable package for the selected SHA, creates `.zen-local/profiles/playground` without copying any personal data and passes an explicit profile with no-remoting options. It records the live identity in `.zen-local/state.json`. Run `package` first; it does not launch an arbitrary developer bundle from `engine/`.
 
-On macOS it stages an identical standalone copy at `/Applications/Zen Playground.app`, so the actual executable is inside Applications for native integrations such as Enpass. `/Applications/Zen.app` remains the separate daily target. The secondary copy is tied to its source artifact by `.zen-local/deployments/playground/<SHA>.json`; an existing app without this checkout's matching ownership receipt is refused. Use `run playground --in-artifact` to omit the Applications copy, for example if that folder is not writable. Linux/Windows run from the sealed artifact.
+On macOS the launcher automatically derives a separately signed Playground package in `.zen-local/playground-artifacts/<SHA>/`, then stages it at `/Applications/Zen Playground.app`. It uses the red [Playground icon](configs/playground-branding/zen-playground.png), bundle ID `io.ozio.zen.playground` and display name `Zen Playground`, without URL, document or browsing-activity handlers. The main package under `.zen-local/artifacts/<SHA>/` and `/Applications/Zen.app` keep their normal Zen branding and handler identity. The derivative records the exact base manifest, base and derived binary/tree digests and reuses the base package's selected signing certificate; re-signing can change the executable hash. No feature-code branding switch is needed.
+
+`package-playground --sha FULL_SOURCE_SHA` can prepare the variant explicitly; `run playground` performs the same preparation automatically. Each variant is immutable. Icon changes require a new source commit/package rather than modifying a sealed application. The Applications copy is tied to both packages by `.zen-local/deployments/playground/<SHA>.json`; an existing unowned or modified app is refused. A stopped, owned legacy copy can migrate once after verification. Staging unregisters only the previous Playground path and registers its new identity in Launch Services; it does not change the system default browser. Use `run playground --in-artifact` to omit the Applications copy. This branding/Launch Services recipe is macOS-specific; Linux/Windows continue running their native sealed package with the explicit isolated profile and require their own desktop/installer validation.
 
 Verify binary path, profile path, PID, source SHA and loopback transport before connecting. Check that the main browser's process and application are still unchanged. Reuse the same test profile for restarts; a fresh profile for the first run and a preserved test profile for the second run are both necessary for a persistence claim.
 
@@ -276,6 +280,28 @@ FoxPilot handles web content through its extension/MCP. Install it afresh in the
 
 For ordinary user website requests, running Zen/FoxPilot remains the default described in [AGENTS.md](AGENTS.md). Missing FoxPilot uses the internal Codex browser, then Chrome. Native desktop control is for specifically requested native UI work, not a fallback for unavailable web tools.
 
+### Separate ordinary and Playground page MCP
+
+The native `zen-playground` tools always control the isolated browser. Ordinary `foxpilot` webpage tools should connect only to main Zen. FoxPilot 1.0.22 does not select a browser according to the macOS default handler or window visibility: a sole connected extension is an implicit target, and an explicit selection is shared by clients of that broker.
+
+Keep main FoxPilot's complete WebSocket port list `[8089]` and the Playground extension's list `[8091]`. Use the supported extension options **WebSocket Ports → Save Ports** (trusted click), then verify the displayed list after the extension reloads. Do not give Playground both ports. Resolve its options URL from its own active `WebExtensionPolicy` after a reset; never borrow main's profile storage. Register `foxpilot-playground` with the same FoxPilot server entry point and `EXTENSION_PORT=8091`; keep ordinary `foxpilot` on `8089`. The [routing audit](docs/foxpilot-routing-audit.md) provides source evidence and the full configuration. [Official MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) describes stdio server and environment registration.
+
+After resetting/reinstalling the extension, configure the Playground port again before webpage automation. Saving configuration is not connection proof: check each broker roster, correlate the dedicated driver with the verified native Playground and a synthetic page, and repeat after browser/client restart. Ordinary must have no Playground driver even when main is stopped. Close only temporary verification tabs. These checks are separate from opening a system link with Playground hidden; check the actual application path chosen by Launch Services, not only the shared default handler ID.
+
+## Russian page translation
+
+The page context menu offers **Перевести на русский**, then **Показать оригинал** for an active translation. It calls Firefox's native full-page translation actor with a fixed `ru` target, including when English is a preferred language. Firefox handles its local model download and translation; restoring the original uses its native page reload. The selected-text translation command remains separate. Internal pages, PDFs, unsupported languages and text-input/link/image contexts follow the capability/page-menu restrictions.
+
+Canonical implementation: [ZenPageTranslations.sys.mjs](src/browser/components/translations/content/ZenPageTranslations.sys.mjs), with the context-menu and translation-jar patches under `src/browser/`. Re-import after patch/new-file changes and perform the committed full build before promotion. State tests and wiring checks do not prove that a native model actually translated a page:
+
+```sh
+node --test tests/translations/page-translation.test.mjs
+node tests/translations/check-wiring.mjs
+python tools/compatibility/probe_server.py --port 8765
+```
+
+In the identified Playground, open `http://127.0.0.1:8765/translation`, right-click its text, inspect the actual page menu, click the Russian command, and verify Russian text in the document. Reopen the menu, click **Показать оригинал**, and compare the full original text before and after reload. Keep model-loading/error checks distinct from a successful translation, and leave personal pages out of diagnostic output.
+
 ## Compatibility gates
 
 All checks apply to the exact source SHA, package digest and host being promoted. Keep the underlying machine-local receipts in `.zen-local/`; the report must distinguish passed, failed and not run. Synthetic sites and values should be used for cookie/session/native-app demonstrations. Never record a personal cookie value, password or vault entry.
@@ -351,6 +377,8 @@ After actually performing the gates, save a JSON receipt at `.zen-local/compatib
 | `checks.extensions` | Boolean `true` after fresh installation and persistence/function checks |
 | `checks.cookies_sessions` | Boolean `true` after same-profile cookie, tabs/Spaces and restore tests |
 | `checks.enpass_native_host` | Boolean `true` after an actual native-app response through Enpass's real local protocol; this field name also covers a direct local connection |
+
+For macOS checks performed on the derived package, include `tested_playground` with its exact `artifact_manifest`, `binary_sha256`, `tree_sha256`, `base_artifact_manifest`, `base_binary_sha256` and `base_tree_sha256`. The installer verifies this binding against both sealed packages. Top-level `artifact_manifest`/`binary_sha256` still identify the main package being installed; never claim the two signed executables have the same digest. State which checks ran on the variant and which ran on the main application.
 
 Add redacted evidence references, observed results and separate native UI MCP/FoxPilot/updater check results. The installer's identity/schema checks do not independently perform the browser tests; do not manufacture passing booleans from implementation confidence. The full gate table above remains required even where the minimum machine-readable schema combines checks. A package or profile reset/change requires reviewing which receipts have become stale.
 

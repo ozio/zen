@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from build import verify_artifact
+from build import playground_artifact_path, verify_artifact, verify_playground_artifact
 from core import (Context, DevError, assert_stopped, atomic_json, browser_binary, copy_tree,
                   host_platform, inventory_digest, is_link, make_read_only, no_symlink_ancestors,
                   read_json, require_sha, sha256_file, source_stamp, tree_inventory, utc_now, verify_mac_signature)
@@ -25,6 +25,17 @@ def compatibility(ctx: Context, manifest: Dict[str, Any], receipt_path: Path) ->
                 "profile": str(ctx.local / "profiles" / "playground"), "result": "pass"}
     if any(receipt.get(key) != value for key, value in expected.items()):
         raise DevError("Compatibility proof does not match this standalone binary, SHA, host and clean profile")
+    if "tested_playground" in receipt:
+        tested = receipt["tested_playground"]
+        variant = verify_playground_artifact(ctx, manifest["source_sha"])
+        expected_tested = {"artifact_manifest": str(playground_artifact_path(ctx, manifest["source_sha"])),
+                           "binary_sha256": variant["binary_sha256"], "tree_sha256": variant["tree_sha256"],
+                           "base_artifact_manifest": expected["artifact_manifest"],
+                           "base_binary_sha256": manifest["binary_sha256"], "base_tree_sha256": manifest["tree_sha256"]}
+        if (not isinstance(tested, dict) or any(tested.get(key) != value for key, value in expected_tested.items())
+                or variant["base_binary_sha256"] != manifest["binary_sha256"]
+                or variant["base_tree_sha256"] != manifest["tree_sha256"]):
+            raise DevError("Tested Playground proof does not match this derived package and its immutable main base")
     checks = receipt.get("checks", {})
     if not isinstance(checks, dict) or any(checks.get(name) is not True for name in REQUIRED_CHECKS):
         raise DevError("Compatibility proof must pass standalone, isolation, extensions, sessions and real Enpass native exchange")

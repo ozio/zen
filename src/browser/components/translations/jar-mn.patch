@@ -1,0 +1,8 @@
+diff --git a/browser/components/translations/jar.mn b/browser/components/translations/jar.mn
+--- a/browser/components/translations/jar.mn
++++ b/browser/components/translations/jar.mn
+@@ -6,3 +6,4 @@
+     content/browser/translations/selectTranslationsPanel.js      (content/selectTranslationsPanel.js)
+     content/browser/translations/fullPageTranslationsPanel.js    (content/fullPageTranslationsPanel.js)
+     content/browser/translations/TranslationsPanelShared.sys.mjs (content/TranslationsPanelShared.sys.mjs)
++    content/browser/translations/ZenPageTranslations.sys.mjs     (content/ZenPageTranslations.sys.mjs)
