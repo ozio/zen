@@ -30,6 +30,8 @@ Read [DEVELOPMENT.md](DEVELOPMENT.md) for setup, platform recipes, playground va
 
 Edit canonical source. An exploratory edit under `engine/` must be exported into the intended tracked patch and reviewed before import or rebuild; an engine-only fix will disappear. Inspect the exact export diff so it does not include unrelated generated changes. Changes to C++, Rust, IDL, build configuration or the Firefox version require a full build. Use a UI rebuild only after a successful matching full build and only for compatible UI changes.
 
+Existing overlay files are symlinked on macOS/Linux, but Windows normally copies them. Changes to patches or preference YAML, added/deleted source files, and Windows overlay edits need a fresh import before compilation. On an already prepared engine, use `bootstrap --skip-system-bootstrap` for the complete locked-dependency/import/en-US preparation. Export any intentional engine-only work first. Surfer's build warning checks only patch count, so it cannot prove changed patch contents were imported.
+
 Use `rg` or `rg --files` for discovery. Read the relevant test and implementation paths rather than applying instructions from an old upstream document to nonexistent feature paths.
 
 ## Supported control entrypoint

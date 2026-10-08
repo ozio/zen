@@ -144,6 +144,18 @@ Changes to Gecko, native code, Rust, IDL, generated build inputs, Firefox versio
 
 Canonical work belongs in `src/`, `prefs/`, `configs/` and the declared patch sources. For a deliberate Firefox edit made in `engine/`, inspect `npm run export -- --help`, export the specific path, review the tracked patch, then import and rebuild. Never count an unexported engine edit as a delivered fix. Re-import can refresh generated service data; inspect resulting tracked changes rather than blindly committing them.
 
+Surfer links existing overlay files on macOS/Linux and normally copies them on Windows. A changed `.patch`, preference YAML, added/deleted overlay file, or Windows overlay edit therefore needs import preparation before the build. Its patch-count warning does not compare patch contents. For an already bootstrapped engine, export any intentional engine edits, then run:
+
+```sh
+python tools/local/dev.py bootstrap --skip-system-bootstrap
+git status --short
+# Review and commit intentional canonical/generated changes before packaging.
+python tools/local/dev.py build --jobs 8
+python tools/local/dev.py package
+```
+
+Do not re-import over unexported work. Ordinary edits to already linked UI files can use `build --ui` for a quick local iteration; the final promotable package still needs a full, usually incremental, CLI build at the committed SHA.
+
 ### Detached candidates and shared managed tools
 
 `stage-pr` and `sync-upstream --stage` report the candidate worktree path and manifest. Use that worktree as the root for all of its source/build/run operations. If the primary checkout already has managed toolchains, share that directory explicitly instead of installing another copy:
