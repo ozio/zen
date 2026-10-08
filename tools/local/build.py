@@ -50,6 +50,7 @@ def configure(ctx: Context, chain: Dict[str, Any], env: Dict[str, str], jobs: in
     no_symlink_ancestors(generated)
     with generated.open("a", encoding="utf-8") as output:
         output.write('\n# Isolated local CLI safeguards\nac_add_options --disable-updater\n')
+        output.write('export MOZ_SOURCE_REPO=https://github.com/ozio/zen\n')
         output.write('mk_add_options MOZ_MAKE_FLAGS="-j%s"\n' % jobs)
         if shutil.which("sccache", path=env["PATH"]):
             output.write("ac_add_options --with-ccache=sccache\n")
