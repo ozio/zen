@@ -2,7 +2,7 @@
 
 This is the local workflow for the personal [`ozio/zen`](https://github.com/ozio/zen) fork. It keeps the daily Zen installation separate from experiments and uses the existing `dev` branch. The initial source baseline is `f6a167d80b62a50c0ef5b9eedfb3bb777e0372f4`, Zen `1.23.1b` on Firefox `157.0.1`. This stamp identifies the starting point; it is not a claim that a source build or compatibility test has passed.
 
-Use [AGENTS.md](AGENTS.md) for repository rules, [UPSTREAM.md](UPSTREAM.md) for periodic updates and [PR_WORKFLOW.md](PR_WORKFLOW.md) for external candidates. The command implementation and its `--help` output are authoritative for available flags; keep these instructions synchronized when changing that interface.
+Use [AGENTS.md](AGENTS.md) for repository rules, [MAIN_UPDATE.md](MAIN_UPDATE.md) for a prepared-package daily update, [UPSTREAM.md](UPSTREAM.md) for periodic source updates, [PR_WORKFLOW.md](PR_WORKFLOW.md) for external candidates and [UPSTREAM_PR.md](UPSTREAM_PR.md) for contributing our own changes upstream. The command implementation and its `--help` output are authoritative for available flags; keep these instructions synchronized when changing that interface.
 
 The completed first native setup and exact tested/installed package are recorded in [docs/macos-validation.md](docs/macos-validation.md). Its scope notes distinguish actual macOS runtime results, accepted plugin checks and untested Linux/Windows recipes.
 
@@ -353,6 +353,8 @@ npm test -- split_view
 Choose `split_view` only for that feature; use the actual relevant directory for another change, such as `spaces`. `npm test -- all` runs a broader suite. These direct npm commands require the same selected Python/Node and command-scoped Rust pin as the wrapper; for Rust-using commands outside the wrapper, set `RUSTUP_TOOLCHAIN=1.95.0` for the command. The existing native `npm run test:gtest` requires a configuration that builds its tests; release configurations can disable tests. Record that limitation rather than inventing a pass. Read [the test runner](scripts/run_tests.py) and current config when a command fails. Unit/control tests do not replace real native or extension checks.
 
 ## Package and promote to daily Zen
+
+For a routine request to update main Zen, follow [the fast procedure](MAIN_UPDATE.md). Prepare checks before closure, reuse the exact validated package when possible, then preview/apply, reopen and verify. The requirements below remain mandatory.
 
 Commit the intended canonical source changes on the current branch or candidate worktree, preserving unrelated work. Produce a standalone package only after a successful full build of that exact committed SHA. `package` refuses tracked source dirt and requires the matching full-build receipt; a UI-only receipt cannot create a new promotable artifact. If a commit changes the tested source SHA after a build, perform the final full build again:
 

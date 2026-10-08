@@ -1,6 +1,6 @@
 # macOS validation, 2026-10-08
 
-The current installed candidate is `47e576d02d5542475eb4c3b092abd7e99dccf5f2`, with the red Playground identity, separate FoxPilot connections and Russian page translation. See [its exact artifacts, live checks and current rollback](playground-identity-and-translation.md). The rest of this document records the earlier initial setup candidate and its original-release rollback.
+The current installed candidate is `18d75652b931bc5e0d7cc850638fe8b15ed85307`, with automatic PiP and Tab site search in addition to the red Playground identity, separate FoxPilot connections and Russian page translation. See [its exact artifacts, daily-installation checks and current rollback](auto-pip-and-site-search.md). Use [MAIN_UPDATE.md](../MAIN_UPDATE.md) for routine promotion. The rest of this document records the earlier initial setup candidate and its original-release rollback.
 
 The personal fork is [ozio/zen](https://github.com/ozio/zen), on `dev`. Its native build is installed at `/Applications/Zen.app` and uses the existing personal profile. The separate `/Applications/Zen Playground.app` runs the managed `.zen-local/profiles/playground` profile. No personal profile, cookies, account state or extension storage were imported into it.
 
@@ -36,11 +36,11 @@ Linux and Windows have portable commands and native setup recipes in [DEVELOPMEN
 
 Use [AGENTS.md](../AGENTS.md) for agent instructions. Change canonical source, commit on `dev`, build/package the exact committed SHA, test in Playground, then promote with the guarded installation command after compatibility and any required authorization. [UPSTREAM.md](../UPSTREAM.md) describes merging upstream while retaining local changes. [PR_WORKFLOW.md](../PR_WORKFLOW.md) describes pinned external PR review, comment analysis, local repair and Playground testing. No particular external PR was supplied or applied during this setup.
 
-On this prepared Mac, launch the current retained candidate from [the latest validation](playground-identity-and-translation.md) with:
+On this prepared Mac, launch the current retained candidate from [the latest validation](auto-pip-and-site-search.md) with:
 
 ```sh
 source .zen-local/env.sh
-python3 tools/local/dev.py run playground --sha 47e576d02d5542475eb4c3b092abd7e99dccf5f2
+python3 tools/local/dev.py run playground --sha 18d75652b931bc5e0d7cc850638fe8b15ed85307
 ```
 
 Close the existing Playground normally before restarting it. Always launch it through this command with the explicit profile. Opening `Zen Playground.app` directly from Finder/Dock invokes Firefox's ordinary default-profile selection; it does not establish the managed Playground identity. The native bridge refuses a mismatched instance rather than attaching to it. Preserve any unrelated profile such a manual launch creates.
@@ -49,7 +49,7 @@ The `zen-playground` stdio MCP is registered in the local Codex configuration. I
 
 ## Rollback and local evidence
 
-The verified original official application and its pre-fork personal profile/registries are retained in backup `2026-10-08T05-58-32.696876_00-00-287e3d1f`. Its original source stamp is `f6a167d80b62a50c0ef5b9eedfb3bb777e0372f4`, and the copied official application's signature verifies. During initial setup, `main-install.json` deliberately selected this original release as the default rollback. The later installation has its own immediate-previous-version default, recorded in [the current validation](playground-identity-and-translation.md); the official backup remains available explicitly. An additional initial snapshot of the intermediate fork and later profile is retained; that intermediate build contained the development cache sentinel corrected by the final package.
+The verified original official application and its pre-fork personal profile/registries are retained in backup `2026-10-08T05-58-32.696876_00-00-287e3d1f`. Its original source stamp is `f6a167d80b62a50c0ef5b9eedfb3bb777e0372f4`, and the copied official application's signature verifies. During initial setup, `main-install.json` deliberately selected this original release as the default rollback. The later installation has its own immediate-previous-version default, recorded in [the current validation](auto-pip-and-site-search.md); the official backup remains available explicitly. An additional initial snapshot of the intermediate fork and later profile is retained; that intermediate build contained the development cache sentinel corrected by the final package.
 
 Preview the return to the official release with:
 

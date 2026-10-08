@@ -2,7 +2,7 @@
 
 This repository maintains the user's daily Zen browser after their move from Arc. The fork is [`ozio/zen`](https://github.com/ozio/zen); its upstream is [`zen-browser/desktop`](https://github.com/zen-browser/desktop). The normal branch is `dev`. Preserve the fork's existing history and local customizations.
 
-Read [DEVELOPMENT.md](DEVELOPMENT.md) for setup, platform recipes, playground validation and installation. Read [UPSTREAM.md](UPSTREAM.md) before updating Zen or Firefox, and [PR_WORKFLOW.md](PR_WORKFLOW.md) when the user supplies an external PR.
+Read [DEVELOPMENT.md](DEVELOPMENT.md) for setup, platform recipes, playground validation and installation. Follow [MAIN_UPDATE.md](MAIN_UPDATE.md) when asked to update the daily browser. Read [UPSTREAM.md](UPSTREAM.md) before updating Zen or Firefox, [PR_WORKFLOW.md](PR_WORKFLOW.md) for incoming external PRs, and [UPSTREAM_PR.md](UPSTREAM_PR.md) when preparing our own contribution to Zen.
 
 The completed macOS setup, exact installed candidate, local evidence and original-release rollback are recorded in [docs/macos-validation.md](docs/macos-validation.md). Use its explicit `--sha` to launch that retained package if documentation-only commits have advanced HEAD.
 
@@ -14,6 +14,14 @@ The completed macOS setup, exact installed candidate, local evidence and origina
 - Continue work already authorized by the user. Build, review, fix and validate a concrete candidate before any needed final deployment decision. Do not repeatedly ask for consent for reversible preparation or an already authorized transition.
 - A request to test an external PR authorizes staging and playground testing. It does not alone authorize changing the daily application or the personal profile. Read any wider authorization in the conversation before asking again.
 - Keep the main `/Applications/Zen.app` and its personal profile intact until the candidate's compatibility gates pass. When replacement is authorized, prepare backups and a standalone package, install through the guarded command, and prove recovery or roll back.
+
+## Fast daily updates and upstream publication
+
+- A request to update main Zen authorizes promoting the requested validated candidate and its routine graceful restart. Prepare the exact standalone package, compatibility proof, registered profile, rollback and post-launch checks before closing main. Once the user says it is closed, verify exit and proceed without another approval round.
+- Reuse an intact matching package and current evidence. Documentation-only HEAD changes do not force a browser rebuild: select its explicit packaged SHA. New code/configuration or stale integration evidence requires preparing and validating the new candidate first. Keep all installation, signature, profile-backup and rollback guards; optimize repeated preparation and idle time, not those guards.
+- Use the preview/apply commands in MAIN_UPDATE.md, reopen main promptly, and complete the short normal-launch read-back. Do not invent diagnostic scripts or repeat accepted plugin onboarding while the user waits with a closed browser. Record timings by phase and finish longer reports after the browser is usable.
+- For our upstream PRs, prepare a local title/body draft and concrete tests first. The user must personally edit the publication text. Do not create even a draft PR, discussion or comment until the user has supplied/edited and approved the exact title/body and explicitly authorized that publication. Use the approved text verbatim; any later wording change needs renewed agreement. Bind approval to the reviewed code head and upstream base too.
+- Disclose agent-generated code honestly. The verified Cursor rejection and the unresolved eligibility of our implementation are described in UPSTREAM_PR.md. User editing of PR prose does not change code provenance. Do not publish to probe acceptance or conceal generation. Publication permission is not permission to merge upstream or to send unapproved follow-up messages.
 
 ## Source and generated files
 
