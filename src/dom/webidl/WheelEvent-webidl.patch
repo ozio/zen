@@ -1,0 +1,14 @@
+diff --git a/dom/webidl/WheelEvent.webidl b/dom/webidl/WheelEvent.webidl
+index 419f419af3c70a2f25bc1ac1144851ee809eb7f4..c95b9c85f72e5b4c100e0fc95dc26f893b86a387 100644
+--- a/dom/webidl/WheelEvent.webidl
++++ b/dom/webidl/WheelEvent.webidl
+@@ -30,6 +30,9 @@ interface WheelEvent : MouseEvent
+   [NeedsCallerType] readonly attribute double        deltaY;
+   [NeedsCallerType] readonly attribute double        deltaZ;
+   [NeedsCallerType] readonly attribute unsigned long deltaMode;
++
++  // Native momentum must not be applied twice by privileged PiP gestures.
++  [ChromeOnly] readonly attribute boolean mozIsMomentum;
+ };
+ 
+ dictionary WheelEventInit : MouseEventInit

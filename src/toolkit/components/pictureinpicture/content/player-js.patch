@@ -1,8 +1,42 @@
 diff --git a/toolkit/components/pictureinpicture/content/player.js b/toolkit/components/pictureinpicture/content/player.js
-index 34d92dcfba54de4752036d0e251243729b6c9626..20a0399e3bf6f9827f805ea6975b801ae269646d 100644
+index 978c6be7dbd2b12c7aa785d9d8becfdd696c023a..c8db7638b56de898de2b47cf5f836fcf65c72aea 100644
 --- a/toolkit/components/pictureinpicture/content/player.js
 +++ b/toolkit/components/pictureinpicture/content/player.js
-@@ -764,6 +764,11 @@ let Player = {
+@@ -14,6 +14,9 @@ const { DeferredTask } = ChromeUtils.importESModule(
+ const { AppConstants } = ChromeUtils.importESModule(
+   "resource://gre/modules/AppConstants.sys.mjs"
+ );
++const { ZenPiPTrackpad } = ChromeUtils.importESModule(
++  "resource://gre/modules/ZenPiPTrackpad.sys.mjs"
++);
+ 
+ const AUDIO_TOGGLE_ENABLED_PREF =
+   "media.videocontrols.picture-in-picture.audio-toggle.enabled";
+@@ -396,6 +399,15 @@ let Player = {
+ 
+     this.computeAndSetMinimumSize(window.outerWidth, window.outerHeight);
+ 
++    this.trackpad = new ZenPiPTrackpad(window, {
++      platform: AppConstants.platform,
++      prefs: Services.prefs,
++      onMove: () => {
++        this.oldMouseUpWindowX = window.screenX;
++        this.oldMouseUpWindowY = window.screenY;
++      },
++    });
++
+     // alwaysontop windows are not focused by default, so we have to do it
+     // ourselves. We use requestAnimationFrame since we have to wait until the
+     // window is visible before it can focus.
+@@ -428,6 +440,7 @@ let Player = {
+   },
+ 
+   uninit() {
++    this.trackpad?.destroy();
+     this.resizeDebouncer.disarm();
+     PictureInPicture.unload(window, this.actor);
+   },
+@@ -967,6 +980,11 @@ let Player = {
          document.getElementById("large").click();
          break;
        }
@@ -14,3 +48,23 @@ index 34d92dcfba54de4752036d0e251243729b6c9626..20a0399e3bf6f9827f805ea6975b801a
      }
      // If the click came from a element that is not inside the subtitles settings panel
      // then we want to hide the panel
+@@ -1036,8 +1054,9 @@ let Player = {
+   },
+ 
+   fullscreenModeToggle() {
++    this.trackpad?.suspendForFullscreen();
+     if (this.isFullscreen) {
+-      document.exitFullscreen();
++      document.exitFullscreen().catch(() => this.trackpad?.resumeAfterFullscreen());
+     } else {
+       this.deferredResize = {
+         left: window.screenX,
+@@ -1045,7 +1064,7 @@ let Player = {
+         width: window.outerWidth,
+         height: window.outerHeight,
+       };
+-      document.body.requestFullscreen();
++      document.body.requestFullscreen().catch(() => this.trackpad?.resumeAfterFullscreen());
+     }
+   },
+ 

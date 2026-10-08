@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Zen PiP gesture probe</title>
+  <style>
+    body {
+      font: 20px system-ui;
+      padding: 2rem;
+      background: #142036;
+      color: #fff;
+    }
+    video {
+      width: min(70vw, 720px);
+      background: #000;
+    }
+    button {
+      font: inherit;
+      padding: 0.5rem;
+      margin: 0.5rem;
+    }
+  </style>
+  <h1>Zen PiP gesture probe</h1>
+  <p>
+    This animated video is generated locally. No account, media download or
+    profile data is used.
+  </p>
+  <button id="play">Play synthetic video</button>
+  <button id="pip">Open Picture in Picture</button>
+  <button id="portrait">Use portrait video</button>
+  <output id="status">Ready</output
+  ><br />
+  <video id="video" muted controls playsinline></video>
+  <script>
+    const canvas = document.createElement("canvas");
+    canvas.width = 640;
+    canvas.height = 360;
+    const ctx = canvas.getContext("2d");
+    const video = document.querySelector("video");
+    const status = document.querySelector("#status");
+    function draw(time) {
+      ctx.fillStyle = "#174a7e";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#ff6658";
+      ctx.fillRect((time / 8) % (canvas.width - 80), canvas.height / 2, 80, 80);
+      ctx.fillStyle = "white";
+      ctx.font = "28px system-ui";
+      ctx.fillText("Zen synthetic PiP", 20, 50);
+      ctx.fillText(Math.floor(time / 1000) + " seconds", 20, 90);
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+    document.querySelector("#play").onclick = async () => {
+      if (!video.srcObject) video.srcObject = canvas.captureStream(24);
+      await video.play();
+      status.textContent = "Playing synthetic video";
+    };
+    document.querySelector("#pip").onclick = async () => {
+      try {
+        await video.requestPictureInPicture();
+        status.textContent = "Picture in Picture opened";
+      } catch (error) {
+        status.textContent =
+          "Use the browser's video PiP button or context menu";
+      }
+    };
+    document.querySelector("#portrait").onclick = () => {
+      canvas.width = 360;
+      canvas.height = 640;
+      status.textContent = "Portrait synthetic video";
+    };
+  </script>
+</html>

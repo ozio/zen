@@ -1,0 +1,12 @@
+diff --git a/dom/events/WheelEvent.h b/dom/events/WheelEvent.h
+index e5f3c7aeec2d67148fc5c11310231c38b7edcbd6..f6f9c4b69f247465794d48b55686b207e04ddfdc 100644
+--- a/dom/events/WheelEvent.h
++++ b/dom/events/WheelEvent.h
+@@ -41,6 +41,7 @@ class WheelEvent : public MouseEvent {
+   double DeltaY(CallerType);
+   double DeltaZ(CallerType);
+   uint32_t DeltaMode(CallerType);
++  bool MozIsMomentum() const;
+ 
+   int32_t WheelDelta(CallerType aCallerType) {
+     int32_t y = WheelDeltaY(aCallerType);

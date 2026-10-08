@@ -1,8 +1,18 @@
 diff --git a/widget/cocoa/nsCocoaWindow.h b/widget/cocoa/nsCocoaWindow.h
-index 22a2a7ef3a5e9257c8bb00ba6a55e8d39d2abbd9..6d8353fd11921585f7101f5717bdb3dd8f2a5eae 100644
 --- a/widget/cocoa/nsCocoaWindow.h
 +++ b/widget/cocoa/nsCocoaWindow.h
-@@ -461,6 +461,10 @@ class nsCocoaWindow final : public nsIWidget {
+@@ -318,6 +318,10 @@
+   void DispatchAPZWheelInputEvent(mozilla::InputData& aEvent);
+   nsEventStatus DispatchAPZInputEvent(mozilla::InputData& aEvent);
+ 
++  enum class PiPTrackpadPhase { Start, End, Cancel };
++  MOZ_CAN_RUN_SCRIPT_BOUNDARY void DispatchPiPTrackpadPhase(
++      PiPTrackpadPhase aPhase);
++
+   void DispatchDoubleTapGesture(mozilla::TimeStamp aEventTimeStamp,
+                                 LayoutDeviceIntPoint aScreenPosition,
+                                 mozilla::Modifiers aModifiers);
+@@ -462,6 +466,10 @@
    void SetHideTitlebarSeparator(bool) override;
    bool IsMacTitlebarDirectionRTL() override;
    void SetCustomTitlebar(bool) override;
@@ -13,7 +23,7 @@ index 22a2a7ef3a5e9257c8bb00ba6a55e8d39d2abbd9..6d8353fd11921585f7101f5717bdb3dd
    void UpdateThemeGeometries(
        const nsTArray<ThemeGeometry>& aThemeGeometries) override;
    void LockAspectRatio(bool aShouldLock) override;
-@@ -674,6 +678,7 @@ class nsCocoaWindow final : public nsIWidget {
+@@ -675,6 +683,7 @@
    // show (e.g. a window created by detaching a tab from a fullscreen window).
    bool mIsInitialFullscreenSuppressed = false;
    bool mWasShown = false;

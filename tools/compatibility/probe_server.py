@@ -4,6 +4,7 @@
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+from pathlib import Path
 from urllib.parse import urlsplit
 
 PAGE = b'''<!doctype html><html lang="en"><meta charset="utf-8">
@@ -62,6 +63,9 @@ class Handler(BaseHTTPRequestHandler):
             data, content_type = PAGE, 'text/html; charset=utf-8'
         elif path == '/translation':
             data, content_type = TRANSLATION_PAGE, 'text/html; charset=utf-8'
+        elif path == '/pip':
+            data = Path(__file__).with_name('pip.html').read_bytes()
+            content_type = 'text/html; charset=utf-8'
         else:
             self.send_error(404)
             return

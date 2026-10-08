@@ -1,0 +1,15 @@
+diff --git a/dom/events/WheelEvent.cpp b/dom/events/WheelEvent.cpp
+index 0a6d36f634b4ac3eb9e13b0f5f52c4302b34b028..9e5b0bfc883c2581ed2cda3a428c654ec0ef7cf1 100644
+--- a/dom/events/WheelEvent.cpp
++++ b/dom/events/WheelEvent.cpp
+@@ -57,6 +57,10 @@ void WheelEvent::InitWheelEventInternal(
+   wheelEvent->mAllowToOverrideSystemScrollSpeed = false;
+ }
+ 
++bool WheelEvent::MozIsMomentum() const {
++  return mEvent->AsWheelEvent()->mIsMomentum;
++}
++
+ int32_t WheelEvent::WheelDeltaX(CallerType aCallerType) {
+   WidgetWheelEvent* ev = mEvent->AsWheelEvent();
+   if (ev->mWheelTicksX != 0.0) {

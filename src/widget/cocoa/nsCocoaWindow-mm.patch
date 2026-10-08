@@ -1,8 +1,15 @@
 diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
-index 887e4c052d5dd2b73d4c2059463529fb4b09dcab..36da18e19018b1b216576c299f938e75093546d3 100644
 --- a/widget/cocoa/nsCocoaWindow.mm
 +++ b/widget/cocoa/nsCocoaWindow.mm
-@@ -86,6 +86,8 @@
+@@ -38,6 +38,7 @@
+ #include "nsCocoaFeatures.h"
+ #include "nsCocoaUtils.h"
+ #include "nsComponentManagerUtils.h"
++#include "nsContentUtils.h"
+ #include "nsDeviceContext.h"
+ #include "nsDocShell.h"
+ #include "nsDragService.h"
+@@ -87,6 +88,8 @@
  #include "mozilla/StaticPrefs_gfx.h"
  #include "mozilla/StaticPrefs_ui.h"
  #include "mozilla/StaticPrefs_widget.h"
@@ -11,7 +18,7 @@ index 887e4c052d5dd2b73d4c2059463529fb4b09dcab..36da18e19018b1b216576c299f938e75
  #include "mozilla/WritingModes.h"
  #include "mozilla/dom/Document.h"
  #include "mozilla/layers/CompositorBridgeChild.h"
-@@ -1332,6 +1334,110 @@ - (NSRect)_opaqueRectForWindowMoveWhenInTitlebar {
+@@ -1333,6 +1336,110 @@
  }
  @end
  
@@ -122,7 +129,153 @@ index 887e4c052d5dd2b73d4c2059463529fb4b09dcab..36da18e19018b1b216576c299f938e75
  void nsCocoaWindow::UpdateWindowDraggingRegion(
      const LayoutDeviceIntRegion& aRegion) {
    // mChildView returns YES from mouseDownCanMoveWindow, so we need to put
-@@ -3858,7 +3964,9 @@ - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+@@ -1362,6 +1469,49 @@
+     [[mChildView window] setMovableByWindowBackground:NO];
+     [[mChildView window] setMovableByWindowBackground:YES];
+   }
++}
++
++void nsCocoaWindow::DispatchPiPTrackpadPhase(PiPTrackpadPhase aPhase) {
++  // GetDocument is the widget listener's root document, not the hit-tested
++  // remote video. Ordinary web pages and browser windows receive no bridge.
++  RefPtr<nsCocoaWindow> widget(this);
++  RefPtr<dom::Document> document = GetDocument();
++  if (!document || !document->NodePrincipal()->IsSystemPrincipal()) {
++    return;
++  }
++  nsAutoCString uri;
++  if (!document->GetDocumentURI() ||
++      NS_FAILED(document->GetDocumentURI()->GetSpec(uri)) ||
++      !uri.EqualsLiteral(
++          "chrome://global/content/pictureinpicture/player.xhtml")) {
++    return;
++  }
++  RefPtr<dom::Element> root = document->GetRootElement();
++  nsAutoString windowType;
++  if (!root || !root->GetAttr(nsGkAtoms::windowtype, windowType) ||
++      !windowType.EqualsLiteral("Toolkit:PictureInPicture")) {
++    return;
++  }
++  nsCOMPtr<nsPIDOMWindowInner> inner = document->GetInnerWindow();
++  if (!inner || inner->GetExtantDoc() != document) {
++    return;
++  }
++  nsAutoString name;
++  switch (aPhase) {
++    case PiPTrackpadPhase::Start:
++      name.AssignLiteral("MozZenPiPTrackpadStart");
++      break;
++    case PiPTrackpadPhase::End:
++      name.AssignLiteral("MozZenPiPTrackpadEnd");
++      break;
++    case PiPTrackpadPhase::Cancel:
++      name.AssignLiteral("MozZenPiPTrackpadCancel");
++      break;
++  }
++  // Keep widget/document/inner alive across synchronous privileged JS. The
++  // caller rechecks its live child after dispatch, which can close the player.
++  nsContentUtils::DispatchEventOnlyToChrome(
++      document, document, name, CanBubble::eYes, Cancelable::eNo);
+ }
+ 
+ nsEventStatus nsCocoaWindow::DispatchAPZInputEvent(InputData& aEvent) {
+@@ -2045,6 +2195,8 @@
+ - (void)magnifyWithEvent:(NSEvent*)anEvent {
+   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
+ 
++  nsAutoRetainCocoaObject kungFuDeathGrip(self);
++
+   if ([self maybeRollup:anEvent]) {
+     return;
+   }
+@@ -2067,6 +2219,19 @@
+   }
+   mGestureState = eGestureState_MagnifyGesture;
+ 
++  RefPtr<nsCocoaWindow> geckoChildDeathGrip(mGeckoChild);
++  const NSEventPhase nativePhase = [anEvent phase];
++  if (nativePhase == NSEventPhaseBegan ||
++      nativePhase == NSEventPhaseCancelled) {
++    geckoChildDeathGrip->DispatchPiPTrackpadPhase(
++        nativePhase == NSEventPhaseBegan
++            ? nsCocoaWindow::PiPTrackpadPhase::Start
++            : nsCocoaWindow::PiPTrackpadPhase::Cancel);
++    if (mGeckoChild != geckoChildDeathGrip) {
++      return;
++    }
++  }
++
+   NSPoint locationInWindow =
+       nsCocoaUtils::EventLocationForWindow(anEvent, [self window]);
+   ScreenPoint position = ViewAs<ScreenPixel>(
+@@ -2110,7 +2275,12 @@
+                           100.0 * (1.0 - [anEvent magnification]),
+                           nsCocoaUtils::ModifiersForEvent(anEvent)};
+ 
+-  mGeckoChild->DispatchAPZInputEvent(event);
++  geckoChildDeathGrip->DispatchAPZInputEvent(event);
++  if (nativePhase == NSEventPhaseEnded &&
++      mGeckoChild == geckoChildDeathGrip) {
++    geckoChildDeathGrip->DispatchPiPTrackpadPhase(
++        nsCocoaWindow::PiPTrackpadPhase::End);
++  }
+ 
+   NS_OBJC_END_TRY_IGNORE_BLOCK;
+ }
+@@ -2732,6 +2902,22 @@
+   }
+ 
+   NSEventPhase phase = [theEvent phase];
++  RefPtr<nsCocoaWindow> geckoChildDeathGrip(mGeckoChild);
++  const bool preciseTrackpad = [theEvent hasPreciseScrollingDeltas];
++  // DOM wheel drops zero deltas. Preserve real finger boundaries for PiP,
++  // independently of the internal Start that sendWheelCondition may invent.
++  if (preciseTrackpad) {
++    if (phase & (NSEventPhaseMayBegin | NSEventPhaseBegan)) {
++      geckoChildDeathGrip->DispatchPiPTrackpadPhase(
++          nsCocoaWindow::PiPTrackpadPhase::Start);
++    } else if (phase & NSEventPhaseCancelled) {
++      geckoChildDeathGrip->DispatchPiPTrackpadPhase(
++          nsCocoaWindow::PiPTrackpadPhase::Cancel);
++    }
++    if (mGeckoChild != geckoChildDeathGrip) {
++      return;
++    }
++  }
+   // Fire eWheelOperationStart/End events when 2 fingers touch/release the
+   // touchpad.
+   if (phase & NSEventPhaseMayBegin) {
+@@ -2746,11 +2932,9 @@
+                     forEvent:theEvent];
+   }
+ 
+-  if (!mGeckoChild) {
+-    return;
+-  }
+-  RefPtr<nsCocoaWindow> geckoChildDeathGrip(mGeckoChild);
+-
++  if (mGeckoChild != geckoChildDeathGrip) {
++    return;
++  }
+   NSPoint locationInWindow =
+       nsCocoaUtils::EventLocationForWindow(theEvent, [self window]);
+ 
+@@ -2833,6 +3017,14 @@
+     geckoChildDeathGrip->DispatchAPZWheelInputEvent(wheelEvent);
+   }
+ 
++  // Ended can include a last nonzero finger delta: deliver it before release,
++  // and release synchronously before the OS's subsequent momentum samples.
++  if (preciseTrackpad && (phase & NSEventPhaseEnded) &&
++      mGeckoChild == geckoChildDeathGrip) {
++    geckoChildDeathGrip->DispatchPiPTrackpadPhase(
++        nsCocoaWindow::PiPTrackpadPhase::End);
++  }
++
+   NS_OBJC_END_TRY_IGNORE_BLOCK;
+ }
+ 
+@@ -3878,7 +4070,9 @@
  // NSDraggingDestination
  - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
    MOZ_LOG(sCocoaLog, LogLevel::Info, ("ChildView draggingUpdated: entered\n"));
@@ -133,7 +286,7 @@ index 887e4c052d5dd2b73d4c2059463529fb4b09dcab..36da18e19018b1b216576c299f938e75
  }
  
  // NSDraggingDestination
-@@ -3874,6 +3982,9 @@ - (void)draggingExited:(id<NSDraggingInfo>)sender {
+@@ -3894,6 +4088,9 @@
  - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
    nsAutoRetainCocoaObject kungFuDeathGrip(self);
    BOOL handled = [self doDragAction:eDrop sender:sender] != NSDragOperationNone;
@@ -143,7 +296,7 @@ index 887e4c052d5dd2b73d4c2059463529fb4b09dcab..36da18e19018b1b216576c299f938e75
    NS_IF_RELEASE(mDragService);
    return handled;
  }
-@@ -4919,6 +5030,10 @@ - (BOOL)wantsBestResolutionOpenGLSurface {
+@@ -4939,6 +5136,10 @@
  nsCocoaWindow::~nsCocoaWindow() {
    NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
  
