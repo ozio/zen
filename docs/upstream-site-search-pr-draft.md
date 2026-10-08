@@ -2,7 +2,7 @@
 
 **Статус: локальный рабочий текст, не разрешён для публикации.** Пользователь должен лично отредактировать title/body и согласовать конкретную отправку по [UPSTREAM_PR.md](../UPSTREAM_PR.md). Этот файл содержит также внутренние заметки; целиком передавать его в `--body-file` нельзя.
 
-Исходная личная реализация: `18d75652b931bc5e0d7cc850638fe8b15ed85307`. Исследованная upstream-база: `aa8f545346c1725bcd598c7ec86188793d423a67`. Чистый proposal head ещё не создан и на этой базе не протестирован.
+Исходная личная реализация: `18d75652b931bc5e0d7cc850638fe8b15ed85307`. Исследованная upstream-база: `aa8f545346c1725bcd598c7ec86188793d423a67`. Чистый checkout `/Users/oz/Projects/zen-contrib` подготовлен напрямую из upstream. Публичный fork выбирается отдельно от `ozio/zen`; feature proposal ещё не перенесён и на этой базе не протестирован.
 
 ## Готовность и окончательный scope
 
@@ -15,7 +15,7 @@
 | Покрытие личной версии | 10 unit/mock-тестов сопоставления/клавиатуры; 7 групп native Playground-сценариев и отдельная проверка создания engine через Settings на macOS ARM64. |
 | Штатные upstream tests | Новый browser-chrome test для функции ещё не написан/не зарегистрирован. Новый прогон lint и тестов чистого proposal не выполнен. |
 | Windows/Linux | Native runtime не проверялся. |
-| Допустимость агентского кода | Не согласована с мейнтейнером; учитывать конкретный [отказ по Cursor в #15176](https://github.com/zen-browser/desktop/pull/15176#issuecomment-5470516644). |
+| Коммуникация | Обычные названия по функции; отдельное упоминание инструмента не добавляется. Прямые вопросы и явные правила проекта требуют точного ответа, согласованного с пользователем. |
 | Публичные действия | PR/discussion/comment для этой подготовки не создавались. |
 
 Общие 53 focused tests в личном release-отчёте включают PiP и другие проверки. В PR про поиск нельзя представлять их как 53 search tests. Подробности уже пройденных native проверок и package identity находятся в [личном отчёте](auto-pip-and-site-search.md); приватные evidence files в upstream не добавлять.
@@ -46,17 +46,13 @@ This draft describes the current name/alias implementation in our personal fork.
 
 ### Testing
 
-Existing evidence for personal-fork source `18d75652b931bc5e0d7cc850638fe8b15ed85307`:
+The feature has not yet been ported to or validated on the clean upstream-based contribution branch. Final native test results, commands and platforms will be recorded here after that branch is tested and before the contributor edits and approves this text for submission.
 
-- 10 Node/vm tests pass for matching priority, normalization, hidden/URL inputs, Tab, Escape, empty-query Backspace, native-key handling, and tab state isolation. Platform boundaries are mocked.
-- 7 native scenario groups passed in the signed standalone macOS ARM64 Playground: hint/icon display; Escape; Backspace immediately after Tab; deletion followed by Backspace; encoded search submission; normal default search/new Command T; and ordinary URL navigation.
-- A synthetic engine was added through native Settings using a shortcut and `%s` search URL; submission was checked and the engine removed afterward.
+## Уже имеющаяся внутренняя проверка
 
-Upstream browser-chrome regressions have not yet been added or run. The clean proposal head and its current-upstream lint have not yet been validated. Windows and Linux native runtime have not been tested. These existing personal-fork results must not be substituted for verification of the final PR head.
+Личный source `18d75652b931bc5e0d7cc850638fe8b15ed85307` имеет 10 Node/vm tests и 7 native scenario groups на macOS ARM64, а также проверку Settings Add/search URL. Это ориентир для переноса и regression cases, а не pass будущего public head. Подробности остаются в личном отчёте; private commit/evidence references не переносить в body автоматически.
 
-### Provenance
-
-The implementation was generated/developed with assistance from a Codex agent. Its eligibility for upstream submission has not yet been confirmed with the maintainers. This local draft is awaiting that clarification and the contributor's edited publication text.
+Upstream browser-chrome regressions ещё не добавлены и не запускались для clean feature branch; Windows/Linux native runtime не проверялся. После переноса обновить публичный Testing по фактическим результатам. Не добавлять в него placeholders, статусы внутреннего backlog или выдуманный pass.
 
 ## План тестов перед отправкой
 
@@ -76,8 +72,8 @@ The implementation was generated/developed with assistance from a Codex agent. I
 
 Последовательность завершения:
 
-1. Решить scope текущего name/alias поиска и желаемого domain trigger, а также допустимость AI provenance.
-2. Подготовить минимальный clean proposal от актуального upstream `dev`, без других personal hunks.
+1. Решить scope текущего name/alias поиска и желаемого domain trigger; сверить явные текущие правила проекта.
+2. В отдельном публичном fork создать `feature/tab-site-search` прямо от актуального `upstream/dev`; перенести минимальную реализацию без других personal hunks, backlog/TODO/status history и локальной инфраструктуры.
 3. Добавить meaningful browser-chrome regressions; свежий import, upstream lint плюс affected Firefox lint и `npm test -- urlbar`; broader tests только по влиянию diff.
 4. Проверить native UI финального head в Playground; зафиксировать OS/SHA/commands и честные ограничения. Сохранить synthetic screenshot/ролик для review.
 5. Обновить этот черновик по фактическим результатам. Пользователь лично редактирует окончательные title/body; после согласования exact text и head/base и разрешения можно создать PR.
