@@ -6,6 +6,13 @@ Read [DEVELOPMENT.md](DEVELOPMENT.md) for setup, platform recipes, playground va
 
 The completed macOS setup, exact installed candidate, local evidence and original-release rollback are recorded in [docs/macos-validation.md](docs/macos-validation.md). Use its explicit `--sha` to launch that retained package if documentation-only commits have advanced HEAD.
 
+## Shared task list across chats
+
+- The canonical list of requested Zen improvements and their current status is [docs/future-improvements.md](docs/future-improvements.md), at `/Users/oz/Projects/Zen/docs/future-improvements.md`.
+- In any chat about this project, references such as "список задач", "лист пожеланий", "наш список", "пункт 7" or "следующий пункт" refer to this list unless the user identifies another list. Read the current file and the relevant numbered section before acting; do not require the user to repeat the requirements or provide history from another chat.
+- Keep existing task numbers stable. When adding a task, update both the status checklist and its detailed section, and reconcile the total count. Preserve other tasks and their current status.
+- A request to record or discuss a task only authorizes recording or discussion. Implement it when the user asks to implement or fix it. Mark it complete only after all requested behavior has been implemented and verified; record remaining checks explicitly.
+
 ## Workflow and authorization
 
 - Default to the current branch, normally `dev`, and commit and push there when authorized. Do not introduce feature branches or a mandatory PR workflow. Temporary detached worktrees are appropriate for candidate builds and external PR tests.
