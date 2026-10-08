@@ -3121,18 +3121,22 @@ class nsZenWorkspaces {
   }
 
   async changeTabWorkspace(workspaceID) {
+    const selectedTab = gBrowser.selectedTab;
     const tabs = TabContextMenu.contextTab.multiselected
       ? gBrowser.selectedTabs
       : [TabContextMenu.contextTab];
+    const shouldSwitchWorkspace = tabs.includes(selectedTab);
     document.getElementById("tabContextMenu").hidePopup();
     this.moveTabsToWorkspace(tabs, workspaceID);
-    // Make sure we select the last tab in the new workspace
-    this.lastSelectedWorkspaceTabs[workspaceID] =
-      gZenGlanceManager.getTabOrGlanceParent(tabs[tabs.length - 1]);
-    const workspaces = this.getWorkspaces();
-    await this.changeWorkspace(
-      workspaces.find(workspace => workspace.uuid === workspaceID)
-    );
+    if (shouldSwitchWorkspace) {
+      // Follow the active tab, including when it is part of a multiselection.
+      this.lastSelectedWorkspaceTabs[workspaceID] =
+        gZenGlanceManager.getTabOrGlanceParent(selectedTab);
+      const workspaces = this.getWorkspaces();
+      await this.changeWorkspace(
+        workspaces.find(workspace => workspace.uuid === workspaceID)
+      );
+    }
   }
 
   // Tab browser utilities
