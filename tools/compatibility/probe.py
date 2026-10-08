@@ -57,6 +57,13 @@ return {url:location.href,title:document.title,
 '''
 
 
+def selected_content(bridge):
+    """Bind Marionette to the selected tab, including tabs opened through chrome."""
+    handle = bridge.client.script('return ChromeUtils.importESModule("chrome://remote/content/shared/NavigableManager.sys.mjs").NavigableManager.getIdForBrowser(gBrowser.selectedBrowser);')
+    bridge.client.command('Marionette:SetContext', {'value':'content'})
+    bridge.client.command('WebDriver:SwitchToWindow', {'handle':handle})
+
+
 def packages(repo):
     root = repo / '.zen-local' / 'extensions'
     inventory = load_json(root / 'inventory.json')
@@ -117,7 +124,7 @@ def main():
                 tab=next(row for row in snap['elements'] if row.get('tag')=='tab' and
                          ((tabs[0]['id'] and row['id']==tabs[0]['id']) or tabs[0]['label'] in row['label']))
                 bridge.tab('select',snapshot_id=snap['snapshot_id'],handle=tab['handle'])
-            bridge.client.command('Marionette:SetContext',{'value':'content'})
+            selected_content(bridge)
             for _ in range(40):
                 result=bridge.client.script(PAGE_STATE)
                 if result['ready']=='complete' and result['title']=='Zen compatibility probe':

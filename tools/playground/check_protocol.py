@@ -110,6 +110,9 @@ def main(argv=None):
         if options.live:
             state = content(session.tool("playground_state"))
             snapshot = content(session.tool("playground_inspect"))
+            window_id = state["browser"].get("window_id", "")
+            if not window_id.isdigit() or window_id == "0":
+                raise RuntimeError("Actual native window has no stable identity")
             shot = session.tool("playground_screenshot")
             if shot.get("isError") or shot["content"][0].get("type") != "image":
                 raise RuntimeError("Chrome screenshot failed")

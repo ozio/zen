@@ -70,25 +70,50 @@ const spaces = ws && typeof ws.getWorkspaces === "function" ? ws.getWorkspaces()
   id:w.uuid, name:w.name || "", active:w.uuid === ws.activeWorkspace,
 })) : [];
 return {
-  document_uri:document.documentURI, window_id:String(window.windowUtils.outerWindowID),
+  document_uri:document.documentURI, window_id:String(window.windowGlobalChild.outerWindowId),
   title:document.title, title_modifier:document.documentElement.getAttribute("titlemodifier"),
   title_preface:document.documentElement.getAttribute("titlepreface"),
   tabs, spaces, spaces_supported:!!ws && typeof ws.changeWorkspaceWithID === "function",
   windows:Array.from(S.wm.getEnumerator("navigator:browser")).map(w => ({
-    id:String(w.windowUtils.outerWindowID), title:w.document.title, current:w === window,
+    id:String(w.windowGlobalChild.outerWindowId), title:w.document.title, current:w === window,
   })),
 };
 """
 
-INSPECT = r"""
+VISIBILITY = r"""
+function nativeMenuVisible(el) {
+  if (!["menuitem", "menu"].includes(el.localName)) return false;
+  const popup = el.closest("menupopup");
+  if (!popup || popup.state !== "open") return false;
+  for (let node = el; node && node !== popup; node = node.parentElement) {
+    const style = window.getComputedStyle(node);
+    if (node.hidden || style.display === "none" || style.visibility === "hidden") return false;
+  }
+  return true;
+}
+"""
+
+INSPECT = VISIBILITY + r"""
 // ZEN_PLAYGROUND_INSPECT
 const [selector, includeHidden, limit] = arguments;
 const elements = [];
 let matched = 0;
-for (const el of document.querySelectorAll(selector)) {
+// Firefox extension prompts place their buttons in an open shadow root.
+// Keep native element references while inspecting only this chrome document.
+const roots = [document], selected = [];
+for (let index = 0; index < roots.length; index++) {
+  if (roots.length > 1000) throw new Error("Chrome shadow-root inventory exceeds limit");
+  const root = roots[index];
+  selected.push(...root.querySelectorAll(selector));
+  for (const node of root.querySelectorAll("*")) {
+    if (node.shadowRoot) roots.push(node.shadowRoot);
+  }
+}
+for (const el of selected) {
   const rect = el.getBoundingClientRect();
   const style = window.getComputedStyle(el);
-  const visible = !el.hidden && style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+  const nativeMenu = nativeMenuVisible(el);
+  const visible = nativeMenu || (!el.hidden && style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0);
   if (!includeHidden && !visible) continue;
   matched++;
   if (elements.length >= limit) continue;
@@ -97,22 +122,35 @@ for (const el of document.querySelectorAll(selector)) {
     tag:el.localName,id:el.id || null,role:el.getAttribute("role"),
     label:el.getAttribute("aria-label") || el.getAttribute("label") || el.getAttribute("title") || el.getAttribute("tooltiptext") || "",
     text:(el.textContent || "").replace(/\s+/g," ").trim().slice(0,240),
-    l10n_id:el.getAttribute("data-l10n-id"), visible,
+    l10n_id:el.getAttribute("data-l10n-id"), visible, native_menu:nativeMenu,
     disabled:!!el.disabled || el.getAttribute("disabled") === "true",
     rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
   });
 }
-return {document_key:document.documentURI + ":" + window.windowUtils.outerWindowID, elements, matched, truncated:matched > limit};
+return {document_key:document.documentURI + ":" + window.windowGlobalChild.outerWindowId, elements, matched, truncated:matched > limit};
 """
 
-FRESH = r"""
+FRESH = VISIBILITY + r"""
 // ZEN_PLAYGROUND_FRESH
 const [el, documentKey, fingerprint] = arguments;
 if (!el || !el.isConnected || el.ownerDocument !== document) return false;
-if (document.documentURI + ":" + window.windowUtils.outerWindowID !== documentKey) return false;
+if (document.documentURI + ":" + window.windowGlobalChild.outerWindowId !== documentKey) return false;
 const now = JSON.stringify([el.localName,el.id,el.getAttribute("label"),el.getAttribute("aria-label"),el.getAttribute("role"),el.getAttribute("data-l10n-id")]);
 const rect = el.getBoundingClientRect(), style = window.getComputedStyle(el);
-return now === fingerprint && !el.hidden && !el.disabled && el.getAttribute("disabled") !== "true" && style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+return now === fingerprint && !el.hidden && !el.disabled && el.getAttribute("disabled") !== "true" && (nativeMenuVisible(el) || (style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0));
+"""
+
+HIT = r"""
+// Reject a pointer click that would land on another element or a clipped Space.
+const el = arguments[0], rect = el.getBoundingClientRect();
+const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+let hit = document.elementFromPoint(x, y);
+while (hit?.shadowRoot) {
+  const inner = hit.shadowRoot.elementFromPoint(x, y);
+  if (!inner || inner === hit) break;
+  hit = inner;
+}
+return !!hit && (hit === el || el.contains(hit));
 """
 
 OPEN_TAB = r"""

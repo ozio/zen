@@ -12,6 +12,8 @@ import subprocess
 import sys
 import uuid
 
+MAC_PLAYGROUND_APP = Path("/Applications/Zen Playground.app")
+
 
 class Refusal(RuntimeError):
     pass
@@ -192,17 +194,33 @@ class Guard:
         binary = canonical(record.get("binary"))
         artifacts = self.repo / ".zen-local" / "artifacts" / record["source_sha"]
         try:
-            binary.relative_to(artifacts)
             manifest_path = canonical(record.get("artifact_manifest"))
             manifest_path.relative_to(artifacts)
         except (ValueError, TypeError) as exc:
             raise Refusal("Executable or manifest is outside the exact source artifact") from exc
         manifest = load_json(manifest_path, max_size=16 * 1024 * 1024)
         if (type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1 or manifest.get("source_sha") != record["source_sha"]
-                or manifest.get("binary") != str(binary)
                 or not isinstance(manifest.get("binary_sha256"), str)
                 or not re.fullmatch(r"[0-9a-f]{64}", manifest["binary_sha256"])):
             raise Refusal("Artifact manifest does not match launcher identity")
+        origin_binary = canonical(manifest.get("binary"))
+        try:
+            origin_binary.relative_to(artifacts)
+        except ValueError as exc:
+            raise Refusal("Artifact executable is outside its source directory") from exc
+        if binary != origin_binary:
+            expected = MAC_PLAYGROUND_APP / "Contents" / "MacOS" / "zen"
+            receipt_path = self.repo / ".zen-local" / "deployments" / "playground" / (record["source_sha"] + ".json")
+            if sys.platform != "darwin" or binary != expected or canonical(record.get("deployment_manifest")) != receipt_path:
+                raise Refusal("Executable is outside the exact source artifact or owned macOS playground application")
+            deployment = load_json(receipt_path)
+            if (type(deployment.get("schema_version")) is not int or deployment["schema_version"] != 1
+                    or deployment.get("root") != str(self.repo) or deployment.get("source_sha") != record["source_sha"]
+                    or deployment.get("bundle") != str(MAC_PLAYGROUND_APP) or deployment.get("binary") != str(binary)
+                    or deployment.get("artifact_manifest") != str(manifest_path)
+                    or deployment.get("binary_sha256") != manifest["binary_sha256"]
+                    or deployment.get("tree_sha256") != manifest.get("tree_sha256")):
+                raise Refusal("Secondary playground deployment does not match its immutable source artifact")
         info = binary.stat()
         cache_key = (str(binary), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, manifest["binary_sha256"])
         if self._hash_cache != cache_key:

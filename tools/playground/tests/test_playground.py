@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bridge import Bridge
@@ -62,6 +63,7 @@ class FakeClient:
         self.caps = {"moz:processID":fixture.record["pid"],"moz:profile":fixture.record["profile"]}
         self.identity = fixture.browser()
         self.fresh = True
+        self.hit = True
         self.disconnected = False
 
     def connect(self):
@@ -88,6 +90,8 @@ class FakeClient:
             }]}
         if script == chrome.FRESH:
             return self.fresh
+        if script == chrome.HIT:
+            return self.hit
         if script == chrome.SPACE:
             return {"active":args[0]}
         return True
@@ -109,6 +113,35 @@ class GuardTests(unittest.TestCase):
 
     def test_positive_manifest_and_process_control(self):
         self.assertEqual(self.fixture.guard.validate(), self.fixture.record)
+
+    def test_owned_secondary_mac_application_requires_matching_source_receipt(self):
+        app = self.fixture.repo / "Applications" / "Zen Playground.app"
+        deployed = app / "Contents" / "MacOS" / "zen"
+        deployed.parent.mkdir(parents=True)
+        deployed.write_bytes(self.fixture.binary.read_bytes())
+        self.fixture.record["binary"] = str(deployed)
+        self.fixture.process["binary"] = str(deployed)
+        self.fixture.process["argv"][0] = str(deployed)
+        receipt_path = self.fixture.repo / ".zen-local" / "deployments" / "playground" / (self.fixture.source + ".json")
+        receipt_path.parent.mkdir(parents=True)
+        origin = json.loads(self.fixture.manifest.read_text())
+        receipt = {"schema_version":1, "root":str(self.fixture.repo), "source_sha":self.fixture.source,
+                   "bundle":str(app), "binary":str(deployed), "artifact_manifest":str(self.fixture.manifest),
+                   "binary_sha256":origin["binary_sha256"], "tree_sha256":origin.get("tree_sha256")}
+        receipt_path.write_text(json.dumps(receipt))
+        self.fixture.record["deployment_manifest"] = str(receipt_path)
+        self.fixture.write()
+        with mock.patch("identity.MAC_PLAYGROUND_APP", app), mock.patch("identity.sys.platform", "darwin"):
+            self.assertEqual(self.fixture.guard.validate(), self.fixture.record)
+            receipt["binary_sha256"] = "b" * 64
+            receipt_path.write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(Refusal, "deployment"):
+                self.fixture.guard.validate()
+            receipt["binary_sha256"] = origin["binary_sha256"]
+            receipt_path.write_text(json.dumps(receipt))
+            deployed.write_bytes(b"the secondary app was replaced")
+            with self.assertRaisesRegex(Refusal, "hash"):
+                self.fixture.guard.validate()
 
     def test_real_current_process_can_be_identified(self):
         actual = process_identity(os.getpid())
@@ -260,7 +293,10 @@ class BridgeTests(unittest.TestCase):
         result = self.bridge.inspect()
         handle = result["elements"][0]["handle"]
         self.bridge.click(result["snapshot_id"],handle)
-        self.assertIn(("WebDriver:ElementClick",{"id":"native-element-1"}), self.fake.calls)
+        actions = [call for call in self.fake.calls if call[0] == "WebDriver:PerformActions"]
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0][1]["actions"][0]["actions"][0]["origin"], {ELEMENT_KEY:"native-element-1"})
+        self.assertIn(("WebDriver:ReleaseActions",None), self.fake.calls)
         with self.assertRaisesRegex(Refusal,"consumed"):
             self.bridge.click(result["snapshot_id"],handle)
 
@@ -275,14 +311,30 @@ class BridgeTests(unittest.TestCase):
         self.fake.fresh = False
         with self.assertRaises(Refusal):
             self.bridge.click(result["snapshot_id"], result["elements"][0]["handle"])
-        self.assertFalse(any(call[0] == "WebDriver:ElementClick" for call in self.fake.calls))
+        self.assertFalse(any(call[0] in ("WebDriver:ElementClick", "WebDriver:PerformActions") for call in self.fake.calls))
 
     def test_process_change_blocks_old_snapshot(self):
         result = self.bridge.inspect()
         self.fixture.process["argv"][3] = "/personal"
         with self.assertRaises(Refusal):
             self.bridge.click(result["snapshot_id"], result["elements"][0]["handle"])
-        self.assertFalse(any(call[0] == "WebDriver:ElementClick" for call in self.fake.calls))
+        self.assertFalse(any(call[0] in ("WebDriver:ElementClick", "WebDriver:PerformActions") for call in self.fake.calls))
+
+    def test_native_menu_click_has_no_fabricated_pointer_coordinates(self):
+        result = self.bridge.inspect()
+        handle = result["elements"][0]["handle"]
+        self.bridge.snapshot["handles"][handle]["native_menu"] = True
+        self.bridge.click(result["snapshot_id"], handle)
+        self.assertIn(("WebDriver:ElementClick", {"id":"native-element-1"}), self.fake.calls)
+        self.assertFalse(any(call[0] == "WebDriver:PerformActions" for call in self.fake.calls))
+
+    def test_overlay_refuses_pointer_click_and_consumes_the_snapshot(self):
+        result = self.bridge.inspect()
+        self.fake.hit = False
+        with self.assertRaisesRegex(Refusal, "covers"):
+            self.bridge.click(result["snapshot_id"], result["elements"][0]["handle"])
+        self.assertFalse(any(call[0] == "WebDriver:PerformActions" for call in self.fake.calls))
+        self.assertIsNone(self.bridge.snapshot)
 
     def test_native_input_and_screenshot_parameters(self):
         result = self.bridge.inspect()

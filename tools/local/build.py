@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -19,6 +20,7 @@ from core import (Context, DevError, assert_stopped, atomic_json, browser_binary
 from download import prefetch_firefox
 
 MARKER = "ZEN PLAYGROUND"
+MAC_PLAYGROUND_APP = Path("/Applications/Zen Playground.app")
 MANAGED_CONFIG = ("# Personal native development build; upstream source remains unchanged.\n"
                   'mk_add_options MOZ_MAKE_FLAGS="-j8"\n'
                   "ac_add_options --disable-debug-symbols\n"
@@ -215,6 +217,13 @@ def verify_artifact(ctx: Context, sha: str) -> Dict[str, Any]:
 def package(ctx: Context, args: Any) -> Dict[str, Any]:
     chain = toolchains(ctx)
     env = build_env(ctx, chain)
+    signing_identity = getattr(args, "signing_identity", None)
+    if signing_identity is not None and platform.system() != "Darwin":
+        raise DevError("--signing-identity is a macOS option")
+    if platform.system() == "Darwin":
+        signing_identity = signing_identity or "-"
+        if signing_identity != "-" and not re.fullmatch(r"[0-9a-fA-F]{40}", signing_identity):
+            raise DevError("Select an exact 40-character certificate fingerprint, or '-' for local ad hoc signing")
     ctx.free_space(2 * 1024 ** 3)
     with ctx.lock():
         before = ctx.snapshot()
@@ -229,7 +238,10 @@ def package(ctx: Context, args: Any) -> Dict[str, Any]:
             raise DevError("Package needs a successful full build of the exact committed source")
         final = ctx.managed(ctx.local / "artifacts" / sha)
         if final.exists():
-            return verify_artifact(ctx, sha)
+            existing = verify_artifact(ctx, sha)
+            if platform.system() == "Darwin" and existing.get("code_signing", {}).get("identity") != signing_identity:
+                raise DevError("An immutable artifact with different signing already exists for this source SHA; preserve it before preparing a distinct candidate")
+            return existing
         bundle = Path(args.bundle).absolute() if args.bundle else discover_bundle(ctx)
         if not bundle.resolve().is_relative_to((ctx.root / "engine").resolve()):
             raise DevError("Package input must be this checkout's built engine bundle")
@@ -246,12 +258,22 @@ def package(ctx: Context, args: Any) -> Dict[str, Any]:
         binary = browser_binary(target)
         if source_stamp(target) != sha:
             raise DevError("Built bundle SourceStamp is not current source SHA; artifact left pending")
+        signing = None
+        if platform.system() == "Darwin":
+            # Seal the materialized distribution, not symlinks into the build tree.
+            # Ad hoc signing uses no private key and makes no notarization claim.
+            ctx.runner.run(["codesign", "--force", "--deep", "--sign", signing_identity, str(target)], ctx.root, env=env)
+            ctx.runner.run(["codesign", "--verify", "--deep", "--strict", str(target)], ctx.root, env=env)
+            signing = {"identity":signing_identity, "kind":"ad-hoc" if signing_identity == "-" else "certificate",
+                       "verification":"codesign --verify --deep --strict", "verified":True, "notarized":False}
         records = tree_inventory(target)
         manifest = {"schema_version": 1, "source_sha": sha, "created_at": utc_now(),
                     "platform": host_platform(), "bundle": str(final / "bundle" / bundle.name),
                     "binary": str(final / binary.relative_to(pending)),
                     "binary_sha256": sha256_file(binary), "tree_sha256": inventory_digest(records),
                     "files": records, "build_receipt": str(build_path), "updater_disabled": True}
+        if signing:
+            manifest["code_signing"] = signing
         atomic_json(pending / "manifest.json", manifest)
         make_read_only(pending)
         os.replace(pending, final)
@@ -289,15 +311,85 @@ def launch_argv(binary: Path, profile: Path, home: Path) -> list:
             "--remote-allow-system-access", "--new-window", home.as_uri()]
 
 
+def stage_mac_playground(ctx: Context, manifest: Dict[str, Any]) -> Dict[str, str]:
+    """Install only the owned secondary app; the daily Zen.app is a different path."""
+    target = MAC_PLAYGROUND_APP
+    no_symlink_ancestors(target)
+    assert_stopped([target], ctx.runner)
+    current = ctx.managed(ctx.local / "deployments" / "playground" / "current.json", create_parent=True)
+    sha = manifest["source_sha"]
+    receipt_path = current.with_name(sha + ".json")
+    origin = ctx.local / "artifacts" / sha / "manifest.json"
+    binary = target / "Contents" / "MacOS" / "zen"
+    old_receipt = None
+    if target.exists():
+        if not current.is_file():
+            raise DevError("Existing Zen Playground.app has no ownership receipt; refusing to replace it")
+        old_receipt = read_json(current)
+        if (old_receipt.get("root") != str(ctx.root) or old_receipt.get("bundle") != str(target)
+                or old_receipt.get("binary") != str(binary)):
+            raise DevError("Existing playground application belongs to another checkout")
+        old = verify_artifact(ctx, require_sha(old_receipt.get("source_sha")))
+        if (old_receipt.get("schema_version") != 1
+                or old_receipt.get("artifact_manifest") != str(ctx.local / "artifacts" / old["source_sha"] / "manifest.json")
+                or old_receipt.get("binary_sha256") != old["binary_sha256"]
+                or old_receipt.get("tree_sha256") != old["tree_sha256"]):
+            raise DevError("Existing playground ownership receipt differs from its artifact")
+        if tree_inventory(target) != old["files"] or sha256_file(binary) != old["binary_sha256"]:
+            raise DevError("Existing playground app differs from its owned artifact; preserve and inspect it")
+        if old["source_sha"] == sha:
+            if not receipt_path.is_file() or read_json(receipt_path) != old_receipt:
+                raise DevError("Playground deployment receipt is inconsistent")
+            return {"binary":str(binary), "bundle":str(target), "deployment_manifest":str(receipt_path)}
+    if not os.access(target.parent, os.W_OK):
+        raise DevError("Applications folder is not writable. Use run playground --in-artifact; Enpass may require an Applications-folder installation.")
+    pending = target.with_name(".zen-playground-pending-" + uuid.uuid4().hex + ".app")
+    previous = target.with_name(".zen-playground-previous-" + uuid.uuid4().hex + ".app")
+    shutil.copytree(Path(manifest["bundle"]), pending, symlinks=False)
+    if tree_inventory(pending) != manifest["files"]:
+        raise DevError("Secondary playground copy is incomplete; pending app retained for inspection")
+    moved_old = False
+    moved_new = False
+    try:
+        if target.exists():
+            os.replace(target, previous)
+            moved_old = True
+        os.replace(pending, target)
+        moved_new = True
+        if source_stamp(target) != sha or sha256_file(binary) != manifest["binary_sha256"]:
+            raise DevError("Secondary application identity mismatch")
+        receipt = {"schema_version":1, "root":str(ctx.root), "source_sha":sha,
+                   "bundle":str(target), "binary":str(binary), "binary_sha256":manifest["binary_sha256"],
+                   "artifact_manifest":str(origin), "tree_sha256":manifest["tree_sha256"], "created_at":utc_now()}
+        atomic_json(ctx.managed(receipt_path), receipt)
+        atomic_json(current, receipt)
+    except BaseException:
+        if moved_new and target.exists():
+            os.replace(target, pending)
+        if moved_old:
+            os.replace(previous, target)
+        raise
+    if moved_old:
+        # This exact old copy was verified above; the immutable source is kept.
+        for path in [previous, *previous.rglob("*")]:
+            if not is_link(path):
+                os.chmod(path, path.stat().st_mode | 0o200)
+        shutil.rmtree(previous)
+    return {"binary":str(binary), "bundle":str(target), "deployment_manifest":str(receipt_path)}
+
+
 def run_playground(ctx: Context, args: Any) -> Dict[str, Any]:
     with ctx.lock():
         sha = require_sha(args.sha or ctx.sha())
         manifest = verify_artifact(ctx, sha)
-        binary = Path(manifest["binary"])
         profile = validate_profile(ctx)
         previous = playground_state(ctx)
-        assert_stopped([profile, binary], ctx.runner, previous)
+        assert_stopped([profile, Path(manifest["binary"])], ctx.runner, previous)
         port_available(args.port)
+        deployment = None
+        if platform.system() == "Darwin" and not getattr(args, "in_artifact", False):
+            deployment = stage_mac_playground(ctx, manifest)
+        binary = Path(deployment["binary"] if deployment else manifest["binary"])
         profile.mkdir(parents=True, exist_ok=True, mode=0o700)
         session = str(uuid.uuid4())
         atomic_json(profile / "zen-playground.json", {"schema_version": 1, "marker": MARKER,
@@ -332,10 +424,12 @@ def run_playground(ctx: Context, args: Any) -> Dict[str, Any]:
             else:
                 options["start_new_session"] = True
             process = subprocess.Popen(argv, **options)
-        value = {"binary": str(binary), "app_bundle": manifest["bundle"], "profile": str(profile),
+        value = {"binary": str(binary), "app_bundle": deployment["bundle"] if deployment else manifest["bundle"], "profile": str(profile),
                  "pid": process.pid, "source_sha": sha, "marionette_host": "127.0.0.1",
                  "marionette_port": args.port, "started_at": utc_now(), "marker": MARKER,
                  "session_id": session, "artifact_manifest": str(ctx.local / "artifacts" / sha / "manifest.json")}
+        if deployment:
+            value["deployment_manifest"] = deployment["deployment_manifest"]
         atomic_json(ctx.managed(ctx.local / "state.json"), {"schema_version": 1, "playground": value})
         deadline = time.monotonic() + 30
         ready = False

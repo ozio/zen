@@ -119,7 +119,23 @@ class Bridge:
         self.verified()
         row = self._element(snapshot_id, handle)
         self.snapshot = None
-        self.client.command("WebDriver:ElementClick", {"id":row["reference"][ELEMENT_KEY]})
+        if row.get("native_menu"):
+            # macOS renders these menus outside the DOM viewport. Marionette's
+            # XUL click dispatches their command without inventing coordinates.
+            self.client.command("WebDriver:ElementClick", {"id":row["reference"][ELEMENT_KEY]})
+        else:
+            if self.client.script(chrome.HIT, [row["reference"]]) is not True:
+                raise Refusal("Another chrome element covers the click target; inspect again")
+            # XUL ElementClick calls el.click(), which omits mousedown. Zen's
+            # Create New button needs the actual pointer sequence to open its menu.
+            try:
+                self.client.command("WebDriver:PerformActions", {"actions":[{
+                    "type":"pointer", "id":"zen-playground-pointer", "parameters":{"pointerType":"mouse"},
+                    "actions":[{"type":"pointerMove", "duration":0, "origin":row["reference"], "x":0, "y":0},
+                               {"type":"pointerDown", "button":0}, {"type":"pointerUp", "button":0}],
+                }]})
+            finally:
+                self.client.command("WebDriver:ReleaseActions")
         return self.state()
 
     def input(self, snapshot_id, handle, text, clear=True):
@@ -155,11 +171,10 @@ class Bridge:
             row = self._element(snapshot_id, handle)
             if row.get("tag") != "tab":
                 raise Refusal("Tab action requires a native browser tab handle")
-            self.snapshot = None
             if action == "select":
-                self.client.command("WebDriver:ElementClick", {"id":row["reference"][ELEMENT_KEY]})
-            else:
-                self.client.script(chrome.CLOSE_TAB, [row["reference"]])
+                return self.click(snapshot_id, handle)
+            self.snapshot = None
+            self.client.script(chrome.CLOSE_TAB, [row["reference"]])
         else:
             raise ValueError("tab action must be open, select or close")
         return self.state()

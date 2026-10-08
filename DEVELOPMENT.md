@@ -156,6 +156,18 @@ python tools/local/dev.py package
 
 Do not re-import over unexported work. Ordinary edits to already linked UI files can use `build --ui` for a quick local iteration; the final promotable package still needs a full, usually incremental, CLI build at the committed SHA.
 
+### macOS package signing and Enpass
+
+The packager signs the materialized macOS app before sealing it, then runs `codesign --verify --deep --strict`. The default is a local ad hoc signature, which needs no certificate/private key and does not imply notarization or acceptance by Enpass. To use an already selected development or distribution certificate, pass its exact SHA-1 fingerprint:
+
+```sh
+python tools/local/dev.py package --signing-identity EXACT_40_CHARACTER_CERTIFICATE_FINGERPRINT
+```
+
+The signing kind and identity are recorded in the immutable artifact manifest. Repackaging the same source SHA with a different signing identity is refused; preserve the existing candidate and its evidence rather than overwriting it. Choose the intended identity before sealing a candidate. Linux/Windows packaging does not use this macOS option.
+
+An initial source-built candidate on this Mac reached Enpass but received Error 403, specifically that the requesting browser was not code signed. That response proves contact with the application, but does not pass compatibility. Enpass's [official error guide](https://help.enpass.io/personal/latest/all/other-browser-error-message) also requires an Applications-folder location on macOS. Its [security whitepaper](https://dl.enpass.io/docs/whitepaper/enpass-security-whitepaper.pdf) describes certificate validation, confirmation for a signed browser outside its allowlist, and separate pairing. Test the actual signed candidate; an ad hoc seal alone is not an Enpass success receipt. Do not silently disable the shared Enpass signature-verification setting to make a test pass.
+
 ### Detached candidates and shared managed tools
 
 `stage-pr` and `sync-upstream --stage` report the candidate worktree path and manifest. Use that worktree as the root for all of its source/build/run operations. If the primary checkout already has managed toolchains, share that directory explicitly instead of installing another copy:
@@ -182,6 +194,8 @@ python tools/local/dev.py run playground --sha FULL_SOURCE_SHA --port 2828
 ```
 
 The default Marionette port is 2828; an alternate port must be in 1024–65535. Change it explicitly if occupied; do not kill the process owning an unfamiliar port. The launcher requires the verified immutable package for the selected SHA, creates `.zen-local/profiles/playground` without copying any personal data and passes an explicit profile with no-remoting options. It records the live identity in `.zen-local/state.json`. Run `package` first; it does not launch an arbitrary developer bundle from `engine/`.
+
+On macOS it stages an identical standalone copy at `/Applications/Zen Playground.app`, so the actual executable is inside Applications for native integrations such as Enpass. `/Applications/Zen.app` remains the separate daily target. The secondary copy is tied to its source artifact by `.zen-local/deployments/playground/<SHA>.json`; an existing app without this checkout's matching ownership receipt is refused. Use `run playground --in-artifact` to omit the Applications copy, for example if that folder is not writable. Linux/Windows run from the sealed artifact.
 
 Verify binary path, profile path, PID, source SHA and loopback transport before connecting. Check that the main browser's process and application are still unchanged. Reuse the same test profile for restarts; a fresh profile for the first run and a preserved test profile for the second run are both necessary for a persistence claim.
 

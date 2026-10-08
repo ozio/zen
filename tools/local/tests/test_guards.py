@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -213,7 +214,7 @@ class ContainmentTests(SandboxTest):
                 patch("build.port_available"), patch("build.subprocess.Popen", return_value=process) as launch, \
                 patch("build.socket.create_connection") as connect:
             connect.return_value.__enter__.return_value.recv.return_value = b'50:{"marionetteProtocol":3}'
-            receipt = build.run_playground(self.ctx, SimpleNamespace(sha=FORK, port=2828))
+            receipt = build.run_playground(self.ctx, SimpleNamespace(sha=FORK, port=2828, in_artifact=True))
         argv = launch.call_args.args[0]
         profile = self.ctx.local / "profiles" / "playground"
         self.assertEqual(argv[:5], [str(binary), "--no-remote", "--profile", str(profile), "--marionette"])
@@ -226,6 +227,89 @@ class ContainmentTests(SandboxTest):
         self.assertIn('"zen.playground.session_id", "%s"' % receipt["session_id"], userjs)
         self.assertIn('"app.update.auto", false', userjs)
         self.assertFalse((profile / "cookies.sqlite").exists())
+
+
+class MacPlaygroundTests(SandboxTest):
+    def setUp(self):
+        super().setUp()
+        self.applications = self.base / "Applications"
+        self.applications.mkdir()
+        self.target = self.applications / "Zen Playground.app"
+        self.patch_target = patch("build.MAC_PLAYGROUND_APP", self.target)
+        self.patch_target.start()
+        self.addCleanup(self.patch_target.stop)
+        self.patch_processes = patch("core.process_list", return_value=[])
+        self.patch_processes.start()
+        self.addCleanup(self.patch_processes.stop)
+
+    def artifact(self, sha=FORK):
+        root = self.ctx.local / "artifacts" / sha
+        bundle = root / "bundle" / "Zen.app"
+        binary = bundle / "Contents" / "MacOS" / "zen"
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(("synthetic executable " + sha).encode())
+        binary.chmod(0o755)
+        (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable":"zen"}))
+        resources = bundle / "Contents" / "Resources"
+        resources.mkdir()
+        (resources / "application.ini").write_text("[App]\nSourceStamp=%s\n" % sha)
+        files = core.tree_inventory(bundle)
+        result = {"schema_version":1, "source_sha":sha, "bundle":str(bundle), "binary":str(binary),
+                  "files":files, "tree_sha256":core.inventory_digest(files),
+                  "binary_sha256":core.sha256_file(binary), "platform":core.host_platform()}
+        core.atomic_json(root / "manifest.json", result)
+        core.make_read_only(root)
+        return result
+
+    def test_secondary_copy_is_identical_owned_and_reusable(self):
+        manifest = self.artifact()
+        result = build.stage_mac_playground(self.ctx, manifest)
+        self.assertEqual(core.tree_inventory(self.target), manifest["files"])
+        receipt = core.read_json(Path(result["deployment_manifest"]))
+        self.assertEqual(receipt["source_sha"], FORK)
+        self.assertEqual(receipt["artifact_manifest"], str(self.ctx.local / "artifacts" / FORK / "manifest.json"))
+        with patch("build.shutil.copytree") as copy:
+            self.assertEqual(build.stage_mac_playground(self.ctx, manifest), result)
+            copy.assert_not_called()
+
+    def test_unowned_existing_app_is_preserved(self):
+        manifest = self.artifact()
+        self.target.mkdir()
+        (self.target / "unrelated").write_text("preserve")
+        with self.assertRaisesRegex(core.DevError, "no ownership receipt"):
+            build.stage_mac_playground(self.ctx, manifest)
+        self.assertEqual((self.target / "unrelated").read_text(), "preserve")
+
+    def test_modified_owned_app_is_preserved_and_refuses_update(self):
+        build.stage_mac_playground(self.ctx, self.artifact())
+        binary = self.target / "Contents" / "MacOS" / "zen"
+        binary.chmod(0o755)
+        binary.write_bytes(b"unexpected modification")
+        with self.assertRaisesRegex(core.DevError, "differs from its owned artifact"):
+            build.stage_mac_playground(self.ctx, self.artifact(HEAD))
+        self.assertEqual(binary.read_bytes(), b"unexpected modification")
+
+    def test_receipt_failure_restores_previous_app_and_ownership(self):
+        old = self.artifact()
+        build.stage_mac_playground(self.ctx, old)
+        current = self.ctx.local / "deployments" / "playground" / "current.json"
+        before = current.read_bytes()
+        candidate = self.artifact(HEAD)
+        with patch("build.atomic_json", side_effect=OSError("receipt failure")):
+            with self.assertRaisesRegex(OSError, "receipt failure"):
+                build.stage_mac_playground(self.ctx, candidate)
+        self.assertEqual(current.read_bytes(), before)
+        self.assertEqual(core.tree_inventory(self.target), old["files"])
+        self.assertEqual(len(list(self.applications.glob(".zen-playground-pending-*.app"))), 1)
+
+    def test_failed_first_install_keeps_candidate_without_claiming_ownership(self):
+        manifest = self.artifact()
+        with patch("build.atomic_json", side_effect=OSError("receipt failure")):
+            with self.assertRaises(OSError):
+                build.stage_mac_playground(self.ctx, manifest)
+        self.assertFalse(self.target.exists())
+        self.assertFalse((self.ctx.local / "deployments" / "playground" / "current.json").exists())
+        self.assertEqual(len(list(self.applications.glob(".zen-playground-pending-*.app"))), 1)
 
 
 class StagingTests(SandboxTest):

@@ -79,6 +79,7 @@ Use a bounded compilation cache and explicit job count. Inspect free disk space 
 - Reuse that same test profile for persistence tests. Resetting it between shutdown and restart invalidates cookie, extension and session persistence evidence.
 - `.zen-local/state.json` is the launcher/bridge identity contract. Verify the live binary, profile, PID, source SHA and loopback Marionette port before native operations. A file on disk or an open port alone is insufficient identity proof.
 - Use an explicit profile and no-remoting launch. A duplicate-process check must distinguish main Zen from the playground; never use a blanket `pkill zen`, quit all browsers or target a window based only on its title.
+- On macOS the default launch stages the sealed artifact at `/Applications/Zen Playground.app`, with a matching source/deployment receipt. An unowned or modified app at that path is refused. `--in-artifact` skips this copy; native integrations such as Enpass may require the Applications location. Choose an authorized signing identity before packaging and check actual integration behavior.
 - Marionette must listen locally and privileged chrome control must be restricted to the identified playground. Keep that automation capability out of the daily launch. Refuse a stale/mismatched state record instead of attaching to another browser.
 - Reset only the verified, stopped playground through `reset-playground`. Keep its receipts, synthetic fixtures and reset scope inspectable.
 

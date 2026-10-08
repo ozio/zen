@@ -53,7 +53,7 @@ Remove a Codex registration with `codex mcp remove zen-playground`. This removes
 | --- | --- | --- |
 | `playground_state` | none | Verified PID, binary, profile, source SHA and launch session; current browser windows, tabs and Spaces |
 | `playground_inspect` | optional CSS `selector`, `include_hidden`, `limit` (1–2000) | Native chrome DOM metadata, `snapshot_id`, element `handle`s, and browser state; default visible controls, at most 300 |
-| `playground_click` | `snapshot_id`, `handle` | Native WebDriver element click; state read-back |
+| `playground_click` | `snapshot_id`, `handle` | Native WebDriver pointer click, or XUL command for an open native menu; state read-back |
 | `playground_input` | `snapshot_id`, `handle`, `text`, optional `clear` (default true) | Native WebDriver clear/send-keys; state read-back; supplied text is not echoed |
 | `playground_tabs` | `action`: `open`, `select`, `close`; optional `url`; `snapshot_id` and `handle` required for select/close | Open HTTP(S) or `about:blank`; select native tab; close that tab while preserving the final tab |
 | `playground_spaces` | `snapshot_id`, `space_id` from that inspection's `browser.spaces` | Select an existing Space using Zen's browser API and confirm its active ID |
@@ -70,7 +70,9 @@ Example calls within one initialized MCP connection:
 {"name":"playground_input","arguments":{"snapshot_id":"RETURNED_SNAPSHOT","handle":"RETURNED_INPUT_HANDLE","text":"https://example.com\uE007"}}
 ```
 
-The `\uE007` WebDriver key means Enter. Resolve identifiers from the returned live inspection rather than assuming an element exists. CSS inspection covers the current chrome document; nested/shadow DOM and separate modal windows may require another tool or a future explicit extension. Spaces switch only when the running Zen API supports it; creation, deletion and naming can be operated through inspected native UI controls. There is no caller-provided JavaScript evaluator, page-content API, profile selector or browser-quit tool.
+The `\uE007` WebDriver key means Enter. Resolve identifiers from the returned live inspection rather than assuming an element exists. CSS inspection includes open shadow roots in the current chrome document, including Firefox's extension permission buttons. Open macOS native menu items are identified with `native_menu=true`; their zero DOM rectangle is expected. The bridge rechecks that their containing popup is open before dispatching the XUL command. Other clicks use actual pointer down/up events and refuse an obscured target. Native window IDs come from Firefox 157's `windowGlobalChild.outerWindowId`.
+
+Separate operating-system modal windows need an appropriate native app tool. Spaces switch only when the running Zen API supports it; creation, deletion and naming can be operated through inspected native UI controls. There is no caller-provided JavaScript evaluator, page-content API, profile selector or browser-quit tool.
 
 ## Native action acceptance recipe
 
@@ -91,7 +93,7 @@ The protocol test and live-read harness do not substitute for these actual nativ
 
 Before connecting, the bridge requires schema v1 and a `playground` record containing exact `binary`, `profile`, positive integer `pid`, lowercase 40-character `source_sha`, `marionette_host` equal to `127.0.0.1`, integer `marionette_port`, `marker` equal to `ZEN PLAYGROUND`, a per-launch UUID `session_id`, and `artifact_manifest`. The launcher also records optional `app_bundle` and `started_at`; those are not identity substitutes.
 
-The executable and manifest must be inside `.zen-local/artifacts/<source_sha>/`; the manifest's source SHA, binary path and executable SHA256 must match. The profile must be exactly `.zen-local/profiles/playground`, and its `zen-playground.json` ownership marker must match the checkout and launch session. Paths, profile preferences and identity files refuse symlinks/reparse points. Identity files must belong to the current Unix user and must not be writable by other users.
+The source manifest and original executable must be inside `.zen-local/artifacts/<source_sha>/`; their source SHA and executable SHA256 must match. On macOS, the launcher may run the identical copy at exactly `/Applications/Zen Playground.app/Contents/MacOS/zen`. This requires the checkout's matching `.zen-local/deployments/playground/<source_sha>.json`, tied to the original manifest, root, app path and binary/tree hashes. No other external executable, including the daily `/Applications/Zen.app`, is accepted. The profile must be exactly `.zen-local/profiles/playground`, and its `zen-playground.json` ownership marker must match the checkout and launch session. Paths, profile preferences and identity files refuse symlinks/reparse points. Identity files must belong to the current Unix user and must not be writable by other users.
 
 The running process must use the exact binary and explicit `--no-remote --profile <exact playground path> --marionette` arguments. macOS reads exact arguments with `KERN_PROCARGS2` and the executable with `proc_pidpath`; Linux reads `/proc`; Windows uses `Win32_Process` and `CommandLineToArgvW`. Unsupported hosts refuse control.
 
