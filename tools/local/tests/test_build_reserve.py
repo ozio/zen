@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from build import incremental_disk_baseline
+from build import incremental_disk_baseline, dynamic_pip_preferences
 from core import Context, DevError, host_platform, sha256_file
 
 
@@ -140,6 +140,53 @@ class BuildReserveTests(unittest.TestCase):
         self.commit()
         with self.assertRaises(DevError):
             incremental_disk_baseline(self.ctx, self.chain, 4)
+
+    def pip_baseline(self):
+        self.pip_text = "- name: zen.pip.trackpad.enabled\n  value: true\n"
+        for name, value in (("fling-speed",1200),("fling-distance",24),("snap-duration-ms",180)):
+            self.pip_text += "- name: zen.pip.trackpad.%s\n  value: %s\n" % (name,value)
+        self.write("prefs/zen/pip.yaml", self.pip_text)
+        self.commit()
+        receipt = json.loads(self.receipt.read_text())
+        self.base = self.ctx.sha()
+        receipt["source_sha"] = self.base
+        self.receipt = self.root / ".zen-local/builds" / self.base / "build.json"
+        self.write(str(self.receipt.relative_to(self.root)), json.dumps(receipt))
+
+    def test_only_known_dynamic_pip_values_can_share_cocoa_incremental_baseline(self):
+        self.pip_baseline()
+        tuned = self.pip_text.replace("1200", "650").replace("24", "12")
+        tuned += "- name: zen.pip.trackpad.edge-padding\n  value: 16\n"
+        self.write("prefs/zen/pip.yaml", tuned)
+        self.commit()
+        with self.cocoa_baseline():
+            self.assertEqual(incremental_disk_baseline(self.ctx,self.chain,8,native_incremental=True),self.base)
+            with self.assertRaises(DevError):
+                incremental_disk_baseline(self.ctx,self.chain,8)
+
+    def test_static_rust_unknown_and_duplicate_prefs_cannot_use_runtime_exception(self):
+        self.pip_baseline()
+        for extra in ("  type: static\n", "  type: rust\n", "  mirror: always\n",
+                      "- name: zen.pip.trackpad.native\n  value: 1\n",
+                      "- name: zen.pip.trackpad.enabled\n  value: true\n"):
+            self.assertFalse(dynamic_pip_preferences(self.pip_text+extra))
+        self.write("prefs/zen/pip.yaml",self.pip_text+"  type: static\n")
+        self.commit()
+        with self.cocoa_baseline(), self.assertRaises(DevError):
+            incremental_disk_baseline(self.ctx,self.chain,8,native_incremental=True)
+
+    def test_other_pref_file_and_native_pip_baseline_still_require_normal_reserve(self):
+        self.pip_baseline()
+        self.write("prefs/zen/other.yaml","- name: zen.other\n  value: true\n")
+        self.commit()
+        with self.cocoa_baseline(), self.assertRaises(DevError):
+            incremental_disk_baseline(self.ctx,self.chain,8,native_incremental=True)
+
+    def test_dynamic_pref_parser_rejects_executable_or_wrong_type_values(self):
+        self.pip_baseline()
+        for value in ("\"650\"", "-1", "2147483648", "650\n  type: static", "true"):
+            self.assertFalse(dynamic_pip_preferences(self.pip_text.replace("1200",value)))
+        self.assertFalse(dynamic_pip_preferences(self.pip_text.replace("true","1")))
 
     def test_missing_objects_changed_config_or_tools_are_refused(self):
         with self.assertRaises(DevError):

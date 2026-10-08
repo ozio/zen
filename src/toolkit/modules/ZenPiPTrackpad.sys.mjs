@@ -2,7 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ZenPiPGestureMotion } from "./ZenPiPGestureMotion.sys.mjs";
+import {
+  ZenPiPGestureMotion,
+  cornerPiPRect,
+} from "./ZenPiPGestureMotion.sys.mjs";
 
 const PREF = "zen.pip.trackpad.enabled";
 const PHASE_START = "MozZenPiPTrackpadStart";
@@ -10,6 +13,9 @@ const PHASE_END = "MozZenPiPTrackpadEnd";
 const PHASE_CANCEL = "MozZenPiPTrackpadCancel";
 const NATIVE_PAN = "MozZenPiPTrackpadPan";
 const NATIVE_PINCH = "MozZenPiPTrackpadPinch";
+const MOUSE_START = "MozZenPiPMouseStart";
+const MOUSE_MOVE = "MozZenPiPMouseMove";
+const MOUSE_END = "MozZenPiPMouseEnd";
 const CAPTURE_ATTRIBUTE = "zen-pip-trackpad-capture";
 const EXCLUDED_TARGETS =
   "input,select,textarea,[role=slider],#settings,#playbackRateSettings";
@@ -20,6 +26,9 @@ const EVENTS = [
   PHASE_CANCEL,
   NATIVE_PAN,
   NATIVE_PINCH,
+  MOUSE_START,
+  MOUSE_MOVE,
+  MOUSE_END,
   "pointerdown",
   "resize",
   "MozDOMFullscreen:Entered",
@@ -84,17 +93,19 @@ export class ZenPiPTrackpad {
       },
       {
         flingSpeed:
-          Math.max(
-            100,
-            prefs.getIntPref("zen.pip.trackpad.fling-speed", 1200),
-          ) / 1000,
+          Math.max(100, prefs.getIntPref("zen.pip.trackpad.fling-speed", 650)) /
+          1000,
         flingDistance: Math.max(
           0,
-          prefs.getIntPref("zen.pip.trackpad.fling-distance", 24),
+          prefs.getIntPref("zen.pip.trackpad.fling-distance", 12),
         ),
         snapDuration: prefs.getIntPref(
           "zen.pip.trackpad.snap-duration-ms",
           180,
+        ),
+        edgePadding: Math.max(
+          0,
+          prefs.getIntPref("zen.pip.trackpad.edge-padding", 16),
         ),
       },
     );
@@ -154,7 +165,10 @@ export class ZenPiPTrackpad {
     const height = Math.round(rect.height);
     const x = Math.round(rect.x);
     const y = Math.round(rect.y);
-    if (this.window.outerWidth !== width || this.window.outerHeight !== height) {
+    if (
+      this.window.outerWidth !== width ||
+      this.window.outerHeight !== height
+    ) {
       this.expectedSize = { width, height };
       this.resizeRequests.push(this.expectedSize);
       if (this.resizeRequests.length > 64) {
@@ -193,6 +207,37 @@ export class ZenPiPTrackpad {
     }
     this.pendingRect = null;
     this.motion.stop();
+  }
+
+  moveToCorner(dx, dy) {
+    if (!this.enabled) {
+      return false;
+    }
+    this.cancelGesture();
+    this.motion.begin();
+    this.motion.write(
+      cornerPiPRect(
+        this.motion.rect,
+        this.motion.bounds,
+        this.motion.options.edgePadding,
+        dx,
+        dy,
+      ),
+    );
+    this.motion.stop();
+    return true;
+  }
+
+  observeMousePosition(time) {
+    this.motion.observePosition(
+      {
+        x: this.window.screenX,
+        y: this.window.screenY,
+        width: this.window.outerWidth,
+        height: this.window.outerHeight,
+      },
+      time,
+    );
   }
 
   acceptsInput(event, target = event.target) {
@@ -280,6 +325,40 @@ export class ZenPiPTrackpad {
     }
     const time = this.window.performance.now();
     switch (event.type) {
+      case MOUSE_START: {
+        const target = this.window.document.elementFromPoint(
+          event.clientX,
+          event.clientY,
+        );
+        if (!event.cancelable || !target || !this.acceptsInput(event, target)) {
+          return;
+        }
+        this.cancelGesture();
+        this.nativeGesture = "mouse";
+        this.window.document.documentElement.setAttribute(
+          CAPTURE_ATTRIBUTE,
+          "mouse",
+        );
+        this.motion.begin(time);
+        event.preventDefault();
+        break;
+      }
+      case MOUSE_MOVE:
+      case MOUSE_END:
+        if (this.nativeGesture !== "mouse") {
+          return;
+        }
+        if (!this.sameScreenBounds || !this.acceptsInput(event)) {
+          this.cancelGesture();
+          return;
+        }
+        this.observeMousePosition(time);
+        if (event.type === MOUSE_END) {
+          this.releaseCapture();
+          this.motion.end(time);
+        }
+        event.preventDefault();
+        break;
       case PHASE_START:
         // Cocoa dispatches a cancellable WheelEvent directly to this chrome
         // document. Claim only an enabled PiP surface, never a slider/panel.
@@ -320,6 +399,7 @@ export class ZenPiPTrackpad {
       case NATIVE_PINCH:
         if (
           !this.nativeGesture ||
+          this.nativeGesture === "mouse" ||
           !this.acceptsInput(event) ||
           (event.type === NATIVE_PINCH) !== (this.nativeGesture === "pinch")
         ) {

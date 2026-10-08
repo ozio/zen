@@ -154,6 +154,34 @@ def require_prior_native_build(ctx: Context) -> None:
     raise DevError("--ui needs a prior successful full CLI build on this host and existing native object tree")
 
 
+def dynamic_pip_preferences(text: str) -> bool:
+    """Accept only this small file's known runtime values, never static/Rust prefs.
+
+    The preference compiler writes entries with only name/value to zen.js. Any
+    extra field or syntax is refused, so this exception cannot add native code.
+    """
+    names = {"enabled", "fling-speed", "fling-distance", "snap-duration-ms", "edge-padding"}
+    required = names - {"edge-padding"}
+    lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    if len(lines) % 2 or len(lines) > 2 * len(names):
+        return False
+    seen = set()
+    for name_line, value_line in zip(lines[::2], lines[1::2]):
+        match = re.fullmatch(r"- name: zen\.pip\.trackpad\.([a-z-]+)", name_line)
+        if not match or match[1] not in names or match[1] in seen:
+            return False
+        name = match[1]
+        seen.add(name)
+        if name == "enabled":
+            if not re.fullmatch(r"  value: (true|false)", value_line):
+                return False
+        else:
+            value = re.fullmatch(r"  value: ([0-9]{1,10})", value_line)
+            if not value or int(value[1]) > 2**31 - 1:
+                return False
+    return required <= seen
+
+
 def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int,
                               *, native_incremental: bool = False) -> Optional[str]:
     """A lower explicit reserve is allowed only for a native-compatible rebuild.
@@ -161,9 +189,9 @@ def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int,
     It still runs the full mach build. Native source/preferences/configuration
     changes, tool changes and an unprepared tree retain the normal 15 GiB floor.
     An explicit macOS-only exception permits the three Cocoa window/router
-    files with >=8 GiB and a full matching object tree. Build still runs full
-    mach dependency analysis; IDL, Rust, prefs, configuration and other native
-    targets are refused, rather than guessing their compilation footprint.
+    files and strictly parsed dynamic PiP runtime preferences with >=8 GiB and
+    a full matching object tree. Build still runs full mach dependency analysis;
+    IDL, Rust, other prefs/configuration/native targets are refused.
     """
     if not 4 <= reserve <= 1024:
         raise DevError("Build disk reserve must be between 4 and 1024 GiB")
@@ -211,6 +239,13 @@ def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int,
         compatible = True
         for name in result.stdout.splitlines():
             source = ctx.root / name
+            if native_incremental and name == "prefs/zen/pip.yaml" and source.is_file():
+                old = ctx.git("show", "%s:%s" % (sha, name), check=False)
+                if (old.returncode == 0 and dynamic_pip_preferences(old.stdout)
+                        and dynamic_pip_preferences(source.read_text())):
+                    continue
+                compatible = False
+                break
             if not name.startswith("src/") or not source.is_file():
                 compatible = False
                 break

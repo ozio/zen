@@ -1,6 +1,6 @@
 # PiP trackpad gestures
 
-This fork implements the user's PiP gesture policy on macOS: live two-finger pan without pressing, centered pinch resize, release-velocity inertia, strong diagonal corner flings and containment within the current monitor's available work area. Ordinary mouse drag and the original Cmd+drag corner behavior remain available.
+This fork implements the user's PiP gesture policy on macOS: live two-finger pan without pressing, centered pinch resize, release-velocity inertia, diagonal corner flings and containment within the current monitor's available work area. Ordinary mouse dragging also gains release inertia. Corner placement and coast use a configurable 16 CSS pixel inset, including the original Cmd+drag corner command.
 
 The platform-neutral `ZenPiPGestureMotion.sys.mjs` owns geometry, recent velocity, exponential coast and corner animation. `ZenPiPTrackpad.sys.mjs` binds those rules to a trusted macOS chrome gesture bridge and pixel wheel input. Windows/Linux do not install the adapter; they require native phase adapters and real host validation before activation.
 
@@ -14,20 +14,27 @@ Local application routing chooses PiP without activating it or changing the key 
 
 No inactivity timer launches motion while fingers rest. The native router drains the completed owner's OS momentum tail because the portable controller supplies inertia. The ChromeOnly `WheelEvent.mozIsMomentum` getter handles the ordinary Gecko wheel path. A new touch over PiP, click, cancellation, manual resize, fullscreen transition, disabled preference or close cancels motion. Animation generations invalidate queued callbacks.
 
+After a claimed two-finger pan first moves, the native adapter hides the cursor through the public CoreGraphics API. At release it moves the cursor by the actual window-origin delta, keeping the initial relative position inside the released window, then balances the hide call. The following inertia animation does not move the cursor again. A cancelled gesture, local Escape, application deactivation, disabling the feature or destroying the player restores visibility without warping. Cursor APIs can depend on foreground application status; the user's physical background-use check remains necessary. A native momentum tail also supplies release if AppKit omitted a separate terminal finger event.
+
+Ordinary dragging remains owned by AppKit. `windowWillMove:` claims an eligible unmodified mouse drag, and native move notifications sample the real window position through `MozZenPiPMouseStart/Move/End`. No second geometry writer runs during the drag. The release launches the same velocity-based coast or corner animation as a finger pan. Mouse-up is observed before normal event dispatch and after AppKit's drag tracking loop returns, so a tracking loop cannot strand the owner. Modifiers, controls, fullscreen, resizing, disabled input and crossing to another monitor cancel or decline the added inertia. Cmd+drag keeps the original corner selection and shares the inset.
+
 Each gesture captures the current monitor's available bounds, including negative origins and Dock/menu exclusions. Fractional target sizes accumulate across asynchronous/coalesced AppKit notifications. Pinch samples submit at most one rectangle per display frame through Gecko's chrome-only `window.moveResize`, which performs one native position-and-size update. End flushes the final pending rectangle; cancellation discards it. Intermediate resize acknowledgements cannot replace a newer intended size. This removes the previous resize-then-move path; perceived smoothness of the live remote video remains a hardware acceptance check.
 
 The existing privileged `sendNativeTouchpadPinch` testing API has a macOS implementation using an NSEvent test object and the real Cocoa router. It supplies absolute scale ratios and native phases without private multitouch APIs or OS posting. This tests native routing and geometry but does not emulate physical hardware. Native scroll synthesis invokes the same application router, then preserves Gecko's original `scrollWheel` fallback for unclaimed controls/page input. Its constructed NSEvent has no usable native window number, so sending it through `NSApp` loses that fallback. The production `NSApp sendEvent:` hook continues to route actual events before AppKit dispatch.
 
-## Initial tuning
+## Current tuning
 
 | Preference | Default | Meaning |
 |---|---|---|
 | `zen.pip.trackpad.enabled` | `true` | Activate the macOS adapter |
-| `zen.pip.trackpad.fling-speed` | `1200` | Corner threshold in CSS pixels/second |
-| `zen.pip.trackpad.fling-distance` | `24` | Minimum meaningful travel before a corner fling |
+| `zen.pip.trackpad.fling-speed` | `650` | Corner threshold in CSS pixels/second |
+| `zen.pip.trackpad.fling-distance` | `12` | Minimum meaningful travel before a corner fling |
 | `zen.pip.trackpad.snap-duration-ms` | `180` | Corner animation duration |
+| `zen.pip.trackpad.edge-padding` | `16` | Gap from available screen edges for coast and corner placement |
 
 The corner threshold uses recent release velocity, not accumulated distance. Both axes must contribute at least 35% of the total speed. Cardinal swipes and weak diagonal nudges coast without forced corner selection. A stationary pause ages the velocity to zero. Coast decays exponentially with a 100 ms time constant, bounded to the captured work area.
+
+The first candidate used 1200 pixels/second and 24 pixels of travel; the user found it too demanding. Live dragging and pinch retain the full available work area. The inset applies to release animation and explicit corner placement; when a window nearly fills an axis, the inset compresses to fit without resizing the video.
 
 Changes to numeric preferences apply to newly opened PiP windows; disabling the feature cancels the current window immediately.
 

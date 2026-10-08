@@ -1,15 +1,18 @@
 diff --git a/widget/cocoa/nsAppShell.mm b/widget/cocoa/nsAppShell.mm
-index 5bdd7894..408f9817 100644
+index 5bdd7894..9dcea811 100644
 --- a/widget/cocoa/nsAppShell.mm
 +++ b/widget/cocoa/nsAppShell.mm
-@@ -187,7 +187,9 @@ - (void)run {
- 
+@@ -187,7 +187,12 @@ - (void)run {
+
  - (void)sendEvent:(NSEvent*)anEvent {
    mozilla::BackgroundHangMonitor().NotifyActivity();
 -  [super sendEvent:anEvent];
 +  if (!nsCocoaWindow::RoutePiPTrackpadEvent(anEvent)) {
 +    [super sendEvent:anEvent];
++    // Native window dragging may consume mouse-up inside AppKit's tracking
++    // loop, without sending it through this override a second time.
++    nsCocoaWindow::FinishPiPMouseDrag(anEvent);
 +  }
  }
- 
+
  - (NSEvent*)nextEventMatchingMask:(NSEventMask)mask

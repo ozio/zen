@@ -65,13 +65,40 @@ export function movePiPRect(rect, bounds, dx, dy) {
   };
 }
 
+// Large windows keep as much padding as fits without resizing the video.
+function motionBounds(rect, bounds, padding) {
+  const gap = Number.isFinite(padding) ? Math.max(0, padding) : 0;
+  const x = Math.min(gap, Math.max(0, (bounds.width - rect.width) / 2));
+  const y = Math.min(gap, Math.max(0, (bounds.height - rect.height) / 2));
+  return {
+    x: bounds.x + x,
+    y: bounds.y + y,
+    width: bounds.width - 2 * x,
+    height: bounds.height - 2 * y,
+  };
+}
+
+export function cornerPiPRect(rect, bounds, padding, dx, dy) {
+  const area = motionBounds(rect, bounds, padding);
+  return {
+    ...rect,
+    x: dx > 0 ? area.x + area.width - rect.width : area.x,
+    y: dy > 0 ? area.y + area.height - rect.height : area.y,
+  };
+}
+
 export class ZenPiPGestureMotion {
   constructor(
     host,
-    { flingSpeed = 1.2, flingDistance = 24, snapDuration = 180 } = {},
+    {
+      flingSpeed = 0.65,
+      flingDistance = 12,
+      snapDuration = 180,
+      edgePadding = 16,
+    } = {},
   ) {
     this.host = host;
-    this.options = { flingSpeed, flingDistance, snapDuration };
+    this.options = { flingSpeed, flingDistance, snapDuration, edgePadding };
     this.phase = "idle";
     this.frame = null;
     this.generation = 0;
@@ -108,6 +135,35 @@ export class ZenPiPGestureMotion {
       this.samples.shift();
     }
     this.write(movePiPRect(this.rect, this.bounds, dx, dy));
+  }
+
+  // AppKit owns mouse dragging. Sample its actual window positions without
+  // writing them a second time; only release animation moves the window here.
+  observePosition(rect, time = this.host.now()) {
+    if (
+      this.phase !== "pan" ||
+      !this.rect ||
+      ![rect.x, rect.y, rect.width, rect.height, time].every(Number.isFinite) ||
+      rect.width <= 0 ||
+      rect.height <= 0
+    ) {
+      return;
+    }
+    const dx = rect.x - this.rect.x;
+    const dy = rect.y - this.rect.y;
+    this.rect = { ...rect };
+    if (!dx && !dy) {
+      return; // Rest ages the last movement sample rather than refreshing it.
+    }
+    this.travel.x += dx;
+    this.travel.y += dy;
+    this.samples.push({ time, ...this.travel });
+    while (
+      this.samples.length > 2 &&
+      this.samples[1].time < time - VELOCITY_WINDOW_MS
+    ) {
+      this.samples.shift();
+    }
   }
 
   pinch(scale) {
@@ -204,7 +260,12 @@ export class ZenPiPGestureMotion {
       const decay = Math.exp(-FRICTION_PER_MS * elapsed);
       const dx = (velocity.x * (1 - decay)) / FRICTION_PER_MS;
       const dy = (velocity.y * (1 - decay)) / FRICTION_PER_MS;
-      const next = movePiPRect(this.rect, this.bounds, dx, dy);
+      const next = movePiPRect(
+        this.rect,
+        motionBounds(this.rect, this.bounds, this.options.edgePadding),
+        dx,
+        dy,
+      );
       if (Math.abs(next.x - (this.rect.x + dx)) > 0.001) {
         velocity.x = 0;
       }
@@ -221,17 +282,13 @@ export class ZenPiPGestureMotion {
   snap(velocity) {
     this.phase = "snap";
     const from = { ...this.rect };
-    const to = {
-      ...from,
-      x:
-        velocity.x > 0
-          ? this.bounds.x + this.bounds.width - from.width
-          : this.bounds.x,
-      y:
-        velocity.y > 0
-          ? this.bounds.y + this.bounds.height - from.height
-          : this.bounds.y,
-    };
+    const to = cornerPiPRect(
+      from,
+      this.bounds,
+      this.options.edgePadding,
+      velocity.x,
+      velocity.y,
+    );
     const duration = clamp(this.options.snapDuration, 0, 1000);
     if (!duration) {
       this.write(to);

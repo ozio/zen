@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   fitPiPRect,
+  cornerPiPRect,
   ZenPiPGestureMotion,
 } from "../../src/toolkit/modules/ZenPiPGestureMotion.sys.mjs";
 import { ZenPiPTrackpad } from "../../src/toolkit/modules/ZenPiPTrackpad.sys.mjs";
@@ -126,14 +127,14 @@ test("equal travel at different speeds separates gentle coast from corner fling"
   swipe(fast, 80, 80, 40);
   assert.equal(fast.motion.phase, "snap");
   fast.settle();
-  close(fast.rect.x, 1080);
-  close(fast.rect.y, 745);
+  close(fast.rect.x, 1064);
+  close(fast.rect.y, 729);
 });
 for (const [dx, dy, x, y] of [
-  [80, 80, 1080, 745],
-  [-80, 80, 0, 745],
-  [80, -80, 1080, 25],
-  [-80, -80, 0, 25],
+  [80, 80, 1064, 729],
+  [-80, 80, 16, 729],
+  [80, -80, 1064, 41],
+  [-80, -80, 16, 41],
 ]) {
   test(`strong diagonal (${dx},${dy}) settles in its selected corner`, () => {
     const h = harness();
@@ -199,8 +200,8 @@ test("recent reversal controls fling direction, including the final Ended delta"
   h.motion.end(130);
   assert.equal(h.motion.phase, "snap");
   h.settle();
-  close(h.rect.x, 0);
-  close(h.rect.y, 25);
+  close(h.rect.x, 16);
+  close(h.rect.y, 41);
 });
 test("each motion keeps its own negative-origin current monitor", () => {
   const area = { x: -1400, y: -875, width: 1400, height: 900 };
@@ -208,8 +209,8 @@ test("each motion keeps its own negative-origin current monitor", () => {
   const other = harness();
   swipe(h, -80, -80);
   h.settle();
-  close(h.rect.x, -1400);
-  close(h.rect.y, -875);
+  close(h.rect.x, -1384);
+  close(h.rect.y, -859);
   contained(h.rect, area);
   assert.deepEqual(other.rect, initial);
 });
@@ -329,6 +330,112 @@ function adapter(platform = "macosx") {
     },
   };
 }
+
+test("a moderate short diagonal now flings, while the prior threshold would coast", () => {
+  const current = harness();
+  swipe(current, 20, 20, 40);
+  assert.equal(current.motion.phase, "snap");
+  current.settle();
+  close(current.rect.x, 1064);
+  close(current.rect.y, 729);
+  const prior = harness({ flingSpeed: 1.2, flingDistance: 24 });
+  swipe(prior, 20, 20, 40);
+  assert.equal(prior.motion.phase, "coast");
+});
+
+test("padding applies to coast and corners, and fits a nearly full-size window", () => {
+  const h = harness({}, bounds, { ...initial, x: 1060 });
+  swipe(h, 20, 0, 40);
+  h.settle();
+  close(h.rect.x, 1064);
+  const large = { x: 0, y: 25, width: 1390, height: 900 };
+  const result = cornerPiPRect(large, bounds, 16, 1, 1);
+  close(result.x, 5);
+  close(result.y, 25);
+  assert.equal(result.width, large.width);
+  assert.equal(result.height, large.height);
+  contained(result);
+  const unpadded = harness({ edgePadding: 0 });
+  swipe(unpadded, 80, 80);
+  unpadded.settle();
+  close(unpadded.rect.x, 1080);
+  close(unpadded.rect.y, 745);
+});
+
+test("native mouse position samples never move the window twice and do coast on release", () => {
+  const h = harness();
+  h.motion.begin();
+  for (let i = 1; i <= 4; i++) {
+    h.at(i * 20);
+    h.motion.observePosition({ ...initial, x: initial.x + i * 10 }, h.now);
+  }
+  assert.deepEqual(h.rect, initial, "AppKit owns movement until release");
+  h.motion.end(h.now);
+  assert.equal(h.motion.phase, "coast");
+  h.settle();
+  assert.ok(h.rect.x > initial.x + 40);
+  close(h.rect.y, initial.y);
+});
+
+test("stationary native mouse release and clicks do not acquire inertia", () => {
+  const h = harness();
+  h.motion.begin();
+  h.at(20);
+  h.motion.observePosition({ ...initial, x: 460 }, h.now);
+  h.at(200);
+  h.motion.observePosition({ ...initial, x: 460 }, h.now);
+  h.motion.end(h.now);
+  assert.equal(h.motion.phase, "idle");
+  const click = harness();
+  click.motion.begin();
+  click.motion.observePosition(initial, 10);
+  click.motion.end(10);
+  assert.equal(click.motion.phase, "idle");
+});
+
+test("Mac mouse adapter observes AppKit positions and preserves controls and modifiers", () => {
+  const a = adapter();
+  const start = a.event("MozZenPiPMouseStart", {
+    cancelable: true,
+    clientX: 10,
+    clientY: 10,
+  });
+  assert.equal(start.consumed, true);
+  for (let i = 1; i <= 4; i++) {
+    a.h.at(i * 20);
+    a.window.screenX += 10;
+    a.event("MozZenPiPMouseMove");
+  }
+  assert.equal(a.window.screenX, 440);
+  a.event("MozZenPiPMouseEnd");
+  a.h.settle();
+  assert.ok(a.window.screenX > 440);
+  assert.equal(a.attributes.has("zen-pip-trackpad-capture"), false);
+  for (const fields of [{ metaKey: true }, { deltaMode: 1 }]) {
+    const reject = adapter();
+    const e = reject.event("MozZenPiPMouseStart", {
+      cancelable: true,
+      clientX: 10,
+      clientY: 10,
+      ...fields,
+    });
+    assert.equal(e.consumed, undefined);
+    assert.equal(reject.instance.nativeGesture, null);
+  }
+  const foreign = adapter("linux");
+  foreign.event("MozZenPiPMouseStart", { cancelable: true });
+  assert.equal(foreign.listeners.size, 0);
+});
+
+test("explicit corner placement shares the inset and leaves no active gesture", () => {
+  const a = adapter();
+  assert.equal(a.instance.moveToCorner(-1, -1), true);
+  assert.equal(a.window.screenX, 16);
+  assert.equal(a.window.screenY, 41);
+  assert.equal(a.instance.motion.phase, "idle");
+  a.disable();
+  assert.equal(a.instance.moveToCorner(1, 1), false);
+});
 test("mac adapter accumulates subpixel deltas and ignores native OS momentum", () => {
   const a = adapter();
   a.event("MozZenPiPTrackpadStart");
@@ -509,8 +616,8 @@ test("an owned native pan keeps its final delta and inertia after the pointer ex
   a.event("MozZenPiPTrackpadEnd", { cancelable: true });
   assert.equal(a.instance.motion.phase, "snap");
   a.h.settle();
-  assert.equal(a.window.screenX, 1080);
-  assert.equal(a.window.screenY, 745);
+  assert.equal(a.window.screenX, 1064);
+  assert.equal(a.window.screenY, 729);
   assert.equal(a.attributes.size, 0);
 });
 
@@ -549,42 +656,59 @@ test("release flushes the last pending pinch rectangle; cancellation never appli
   a.h.tick();
   assert.equal(a.window.outerWidth, 400);
   assert.equal(a.attributes.size, 0);
-  assert.equal(a.event("MozZenPiPTrackpadPinch", { deltaY: 1 }).consumed, undefined);
+  assert.equal(
+    a.event("MozZenPiPTrackpadPinch", { deltaY: 1 }).consumed,
+    undefined,
+  );
 });
 
 test("native capture rejects an outside start, controls, disabled/fullscreen and untrusted input", () => {
   const outside = adapter();
-  assert.equal(nativeStart(outside, false, { clientX: -1 }).consumed, undefined);
+  assert.equal(
+    nativeStart(outside, false, { clientX: -1 }).consumed,
+    undefined,
+  );
   assert.equal(outside.attributes.size, 0);
   const control = adapter();
   control.window.document.elementFromPoint = () => ({ closest: () => true });
   assert.equal(nativeStart(control).consumed, undefined);
   for (const block of [
-    a => a.disable(),
-    a => { a.window.fullScreen = true; },
-    a => a.instance.suspendForFullscreen(),
+    (a) => a.disable(),
+    (a) => {
+      a.window.fullScreen = true;
+    },
+    (a) => a.instance.suspendForFullscreen(),
   ]) {
     const a = adapter();
     block(a);
     assert.equal(nativeStart(a, true).consumed, undefined);
     assert.equal(a.attributes.size, 0);
   }
-  assert.equal(nativeStart(adapter(), false, { isTrusted: false }).consumed, undefined);
+  assert.equal(
+    nativeStart(adapter(), false, { isTrusted: false }).consumed,
+    undefined,
+  );
 });
 
 test("native capture rejects a mismatched gesture and ends ownership on disable, close or fullscreen", () => {
   for (const block of [
-    a => a.disable(),
-    a => a.instance.suspendForFullscreen(),
-    a => a.event("unload"),
+    (a) => a.disable(),
+    (a) => a.instance.suspendForFullscreen(),
+    (a) => a.event("unload"),
   ]) {
     const a = adapter();
     nativeStart(a);
-    assert.equal(a.event("MozZenPiPTrackpadPinch", { deltaY: 0.5 }).consumed, undefined);
+    assert.equal(
+      a.event("MozZenPiPTrackpadPinch", { deltaY: 0.5 }).consumed,
+      undefined,
+    );
     assert.equal(a.window.outerWidth, 320);
     block(a);
     assert.equal(a.attributes.size, 0);
-    assert.equal(a.event("MozZenPiPTrackpadPan", { deltaX: -100 }).consumed, undefined);
+    assert.equal(
+      a.event("MozZenPiPTrackpadPan", { deltaX: -100 }).consumed,
+      undefined,
+    );
     assert.equal(a.window.screenX, 400);
   }
 });

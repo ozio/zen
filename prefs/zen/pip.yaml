@@ -8,10 +8,14 @@
 
 # CSS pixels per second; slow accumulated travel does not count as a fling.
 - name: zen.pip.trackpad.fling-speed
-  value: 1200
+  value: 650
 
 - name: zen.pip.trackpad.fling-distance
-  value: 24
+  value: 12
 
 - name: zen.pip.trackpad.snap-duration-ms
   value: 180
+
+# CSS pixel inset for release animations and explicit corner placement.
+- name: zen.pip.trackpad.edge-padding
+  value: 16

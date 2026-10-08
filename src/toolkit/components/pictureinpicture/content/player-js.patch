@@ -1,5 +1,5 @@
 diff --git a/toolkit/components/pictureinpicture/content/player.js b/toolkit/components/pictureinpicture/content/player.js
-index 978c6be7dbd2b12c7aa785d9d8becfdd696c023a..c8db7638b56de898de2b47cf5f836fcf65c72aea 100644
+index 978c6be7..66387770 100644
 --- a/toolkit/components/pictureinpicture/content/player.js
 +++ b/toolkit/components/pictureinpicture/content/player.js
 @@ -14,6 +14,9 @@ const { DeferredTask } = ChromeUtils.importESModule(
@@ -9,13 +9,13 @@ index 978c6be7dbd2b12c7aa785d9d8becfdd696c023a..c8db7638b56de898de2b47cf5f836fcf
 +const { ZenPiPTrackpad } = ChromeUtils.importESModule(
 +  "resource://gre/modules/ZenPiPTrackpad.sys.mjs"
 +);
- 
+
  const AUDIO_TOGGLE_ENABLED_PREF =
    "media.videocontrols.picture-in-picture.audio-toggle.enabled";
 @@ -396,6 +399,15 @@ let Player = {
- 
+
      this.computeAndSetMinimumSize(window.outerWidth, window.outerHeight);
- 
+
 +    this.trackpad = new ZenPiPTrackpad(window, {
 +      platform: AppConstants.platform,
 +      prefs: Services.prefs,
@@ -30,7 +30,7 @@ index 978c6be7dbd2b12c7aa785d9d8becfdd696c023a..c8db7638b56de898de2b47cf5f836fcf
      // window is visible before it can focus.
 @@ -428,6 +440,7 @@ let Player = {
    },
- 
+
    uninit() {
 +    this.trackpad?.destroy();
      this.resizeDebouncer.disarm();
@@ -50,7 +50,7 @@ index 978c6be7dbd2b12c7aa785d9d8becfdd696c023a..c8db7638b56de898de2b47cf5f836fcf
      // then we want to hide the panel
 @@ -1036,8 +1054,9 @@ let Player = {
    },
- 
+
    fullscreenModeToggle() {
 +    this.trackpad?.suspendForFullscreen();
      if (this.isFullscreen) {
@@ -67,4 +67,36 @@ index 978c6be7dbd2b12c7aa785d9d8becfdd696c023a..c8db7638b56de898de2b47cf5f836fcf
 +      document.body.requestFullscreen().catch(() => this.trackpad?.resumeAfterFullscreen());
      }
    },
- 
+
+@@ -1200,6 +1219,7 @@ let Player = {
+    * Moves the PiP window to the top right.
+    */
+   moveToTopRight() {
++    if (this.trackpad?.moveToCorner(1, -1)) return;
+     window.moveTo(
+       window.screen.availLeft + window.screen.availWidth - window.innerWidth,
+       window.screen.availTop
+@@ -1210,6 +1230,7 @@ let Player = {
+    * Moves the PiP window to the top left.
+    */
+   moveToTopLeft() {
++    if (this.trackpad?.moveToCorner(-1, -1)) return;
+     window.moveTo(window.screen.availLeft, window.screen.availTop);
+   },
+
+@@ -1217,6 +1238,7 @@ let Player = {
+    * Moves the PiP window to the bottom right.
+    */
+   moveToBottomRight() {
++    if (this.trackpad?.moveToCorner(1, 1)) return;
+     window.moveTo(
+       window.screen.availLeft + window.screen.availWidth - window.innerWidth,
+       window.screen.availTop + window.screen.availHeight - window.innerHeight
+@@ -1227,6 +1249,7 @@ let Player = {
+    * Moves the PiP window to the bottom left.
+    */
+   moveToBottomLeft() {
++    if (this.trackpad?.moveToCorner(-1, 1)) return;
+     window.moveTo(
+       window.screen.availLeft,
+       window.screen.availTop + window.screen.availHeight - window.innerHeight
