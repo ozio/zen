@@ -47,9 +47,13 @@ const [ids,done]=arguments;
 '''
 
 PAGE_STATE = r'''
+let cookieOk=false, counter=null;
+try {
+  cookieOk=document.cookie.split('; ').includes('zen_probe=synthetic-v1');
+  counter=localStorage.getItem('zen-probe-counter');
+} catch (_) { /* A newly opened about:blank tab has not reached the fixture yet. */ }
 return {url:location.href,title:document.title,
-  cookie_ok:document.cookie.split('; ').includes('zen_probe=synthetic-v1'),
-  counter:localStorage.getItem('zen-probe-counter'),ready:document.readyState};
+  cookie_ok:cookieOk,counter,ready:document.readyState};
 '''
 
 
@@ -110,7 +114,8 @@ def main():
                 if not tabs:
                     raise RuntimeError('Seed tab did not survive browser restart')
                 snap=bridge.inspect('tab')
-                tab=next(row for row in snap['elements'] if row['id']==tabs[0]['id'])
+                tab=next(row for row in snap['elements'] if row.get('tag')=='tab' and
+                         ((tabs[0]['id'] and row['id']==tabs[0]['id']) or tabs[0]['label'] in row['label']))
                 bridge.tab('select',snapshot_id=snap['snapshot_id'],handle=tab['handle'])
             bridge.client.command('Marionette:SetContext',{'value':'content'})
             for _ in range(40):
