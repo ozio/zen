@@ -1,85 +1,95 @@
 # macOS PiP trackpad candidate validation
 
-Recorded 8 October 2026. The updated candidate is running in **Zen Playground** after a normal restart. It addresses the user's outside-release, unfocused-pinch and jerky-resize feedback. Daily Zen has not been replaced. Physical trackpad acceptance remains open.
+Recorded 9 October 2026. The updated candidate is running in **Zen Playground** after a normal restart. It lowers the corner-fling threshold, adds a 16-pixel inset, restores the cursor at the translated release point and implements mouse release inertia. Daily Zen has not been replaced. Physical trackpad acceptance and ordinary AppKit mouse-drag verification remain open.
 
 ## Exact candidate
 
 | Property | Value |
 |---|---|
-| Browser source | `0edecd132a426d59d50fd69c14cc08277ed03548` |
-| Feedback implementation | `20b1c12487a49bad3ab060d3202b9ef876083928`; build-baseline correction `93e3d2c3e46975731c467281f50f31676dd73d99`; native replay fallback correction `0edecd132a426d59d50fd69c14cc08277ed03548` |
+| Browser source | `93786813fe0c41bc54c77d437f1c36f2ab54837f` |
+| Tuning / pointer implementation | `aa667d33ce3c0d63d503291befb780fd9f14f1c3`; native atom ownership correction `93786813fe0c41bc54c77d437f1c36f2ab54837f` |
+| Previous outside-release / pinch candidate | `0edecd132a426d59d50fd69c14cc08277ed03548` |
 | Host | macOS 26.6.2, build 25G83, ARM64 |
 | Build SDK / compiler | Managed MacOSX26.5.sdk / Clang 22.1.8; minimum macOS 11.0 |
 | Managed tools | Node 22.23.3, Python 3.11.15, Rust 1.95.0 |
-| Base package tree SHA-256 | `9073eb0d1ba8a8d78495022e26e1504c3c6879694906fff689a9cadb235b62ab` |
-| Base executable SHA-256 | `a78c69a863da0eef15a47dcbed4d1f6fb7f7d6f92e2eba7daa971abb4d3f8ec8` |
-| Playground tree SHA-256 | `8466334740a4da6709633d87d4bf0de408e179ca1acd68cbf1f06a7de7a4a001` |
-| Playground executable SHA-256 | `3c5476a6ef30e1d93ec133bc2fa176d8fc1fda2fb76a4bab3c248579f872fb2a` |
+| Base package tree SHA-256 | `072f80412fc41c78db758974b4f95be0bfa9181251004332fd559fc5c41384a0` |
+| Base executable SHA-256 | `a7006588d483fa502755c2b3918a6d93b88760582577077c3528f9eb3a6a224e` |
+| Playground tree SHA-256 | `294c09942d9c8e1f79719d04707b9f15a78ad24308c8826410f614f2680b19a5` |
+| Playground executable SHA-256 | `43dce806fda5eb0a1be03ba87902a9292b70b69a12382a3b545b13ca64be184a` |
 | Installed test application | `/Applications/Zen Playground.app`, bundle `io.ozio.zen.playground`, red icon |
 | Test profile | `.zen-local/profiles/playground`; originally empty, reused without reset or personal data import |
 | Native transport | `127.0.0.1:2828`, restricted to the identified Playground by the launcher/bridge guard |
-| Runtime PIDs | 81409 for gesture/control checks; 84544 after verified normal quit/restart |
+| Runtime PIDs | 37808 for gesture/cursor/control checks; 41361 after verified normal quit/restart |
 
-The build receipt reports a clean committed source, `ui_only: false` and a successful full `mach build -j2`. Fresh bootstrap/import and byte comparisons verify all eight affected Cocoa/IDL/UI build targets. Both packaged motion modules are independent files whose bytes equal the canonical source. They do not depend on overlay symlinks. The guarded native incremental mode used the matching successful baseline, an explicit 8 GiB reserve and a 128 MiB compilation cache. It still performed native dependency analysis and compilation. Disposable project output/cache was pruned with local receipts; profiles, tested artifacts and rollback materials were retained.
+The build receipt reports clean committed source, `ui_only: false` and a successful full `mach build -j2`. Fresh bootstrap/import and exact patch comparisons verify all four changed Cocoa/player targets and four unchanged targets from the preceding candidate. Both packaged motion modules are independent files whose bytes equal canonical source. The guarded native incremental mode used a matching successful baseline, an explicit 8 GiB reserve and a 128 MiB compilation cache. It still performed native dependency analysis and compilation. After fresh import, only byte-identical inputs regained their previous timestamps; changed Cocoa code was compiled and the new source stamp was retained.
 
-The base and Playground packages use the previously authorized development certificate `982127333DD1FF0DA856B0137CED1AF27B52E1A8`. Complete `codesign --verify --deep --strict` checks passed on the sealed packages and installed application after startup and restart. The standalone Applications copy uses the wrapper's extended-attribute-preserving copy. These local packages are not notarized.
+The first build of the tuning commit failed on two atom arguments to Gecko element APIs. The correction retains each atom in a `RefPtr<nsAtom>`; the corrected native object and full build passed. The failed build log is retained separately and is not counted as a successful build.
+
+The base and Playground packages use the authorized development certificate `982127333DD1FF0DA856B0137CED1AF27B52E1A8`. Complete `codesign --verify --deep --strict` checks passed on both sealed packages and the installed application after startup and restart. The standalone Applications copy preserves extended attributes and contains no external build symlinks. These local packages are not notarized.
 
 Documentation-only commits can advance `dev` beyond the tested source. Launch this retained package explicitly:
 
 ```sh
-python3.11 tools/local/dev.py run playground --sha 0edecd132a426d59d50fd69c14cc08277ed03548
+python3.11 tools/local/dev.py run playground --sha 93786813fe0c41bc54c77d437f1c36f2ab54837f
 ```
 
-## Feedback fixes and packaged runtime
+## Packaged gestures and controls
 
-The native Cocoa router claims the initial PiP surface before AppKit hit-testing and retains that owner through release/cancel, even if the moved window leaves the pointer. Pinch uses the window under the pointer without making it key. Fractional desired sizes accumulate; the adapter submits one atomic `moveResize` rectangle per animation frame instead of separate resize and move calls. Intermediate native resize acknowledgements cannot overwrite a newer desired size. See [the implementation notes](pip-trackpad.md).
-
-The loopback `/pip` fixture generates animated canvas video. Replay calls Gecko's native scroll/pinch test APIs and the same Cocoa ownership router used by production. Claimed samples reach the trusted, chrome-only player bridge. Declined synthetic scroll events retain the original Cocoa `scrollWheel`/APZ fallback. The synthetic NSEvent has no usable window number: a first candidate lost fallback when sent through `NSApp`; the actual volume-slider negative check exposed this, and the corrected test entry point was fully rebuilt. Production still uses the `NSApp sendEvent:` hook for actual events.
+The native router retains the claimed PiP through outside release/cancel. Pinch selects the window under the pointer without making it key; fractional sizes accumulate and submit one atomic rectangle per frame. Claimed native test samples use the production Cocoa owner router. Unclaimed native scroll synthesis preserves the original Cocoa/APZ fallback. These paths remain from the previous candidate and were rechecked on the current package. See [implementation and tuning](pip-trackpad.md).
 
 | Check | Result and measured scope |
 |---|---|
-| Policy/adapter regressions | **Passed:** 31 tests, including outside terminal events, trusted ownership, unfocused pinch, fractional accumulation, atomic geometry, stale acknowledgements, cleanup and non-Mac guards |
-| Development control regressions | **Passed:** 80 tests, including reduced-reserve eligibility and source-stamp normalization without ignoring compiler/configuration changes |
-| Outside release | **Passed:** fixed pointer leaves the moved PiP; five nonzero pan samples and exactly one End reach the same owner, including the final delta; the window then reaches the expected corner |
-| Unfocused native pinch | **Passed:** sender is the main browser window; PiP remains unfocused and the key browser window is unchanged; 640×360 grows to 832×468 around the same center |
-| Native subpixel burst | **Passed:** 24 native pinch samples retain their fractional contribution, reach 671×378 and produce one geometry submission for the synchronous burst |
-| Native shrink | **Passed:** 640×360 shrinks to 448×252 |
-| Outside cancel/rest | **Passed:** cancel stops without coast; 200 ms of rest before outside release does not cause a fling |
-| Existing motion policy | **Passed:** 11 replay scenarios cover gentle pan, cardinal coast, four strong corner flings, Began without MayBegin, final nonzero delta, converted pinch, subpixel accumulation, momentum filtering, retouch and cancel |
-| Bounded animation | **Passed:** recorded native rectangles remain within this monitor's `(0, 31, 2560, 1409)` available area |
-| Native portrait pinch | **Passed:** an unfocused 360×640 player grows to 793×1409, retains aspect and stops at available height; sampled rectangles stay contained |
-| Native input guards | **Passed:** real line-wheel samples and pixel samples over the actual volume slider fall through as ordinary wheel input and leave PiP geometry unchanged |
-| Normal webpage scrolling | **Passed:** with PiP closed, three trusted pixel wheel events traverse the declined router's Cocoa/APZ fallback and scroll the owned loopback page by 360 CSS pixels |
-| Buttons/fullscreen/disable | **Passed:** actual trusted Play/Pause and Close; fullscreen entry, guarded input and prior-size restoration on exit; preference disable/restoration |
-| Pointer interruption | **Passed:** a trusted click on Play/Pause stops coast |
-| Original mouse release | **Passed for the trusted DOM path:** ordinary release preserves position; Command-modified release keeps the original corner logic. Physical AppKit dragging was not replayed |
+| Policy/adapter regressions | **Passed:** 37 tests, including the lower threshold, inset compression, native mouse position sampling without a second writer, rest/click release, input ownership, fullscreen and non-Mac guards |
+| Development control regressions | **Passed:** 84 tests, including the narrow dynamic PiP preference exception and refusal of static/Rust/unknown/duplicate preference definitions |
+| New default tuning | **Passed:** live packaged preferences are 650 CSS pixels/second, 12 pixels of travel, 180 ms snap and 16 pixels of inset |
+| Inset and lower-threshold replay | **Passed:** all four corners stop 16 pixels inside the current available area; the separate 20×12-pixel native-sample fling reaches the expected inset corner |
+| Existing motion | **Passed:** 11 replay scenarios cover gentle pan, cardinal coast, four corners, Began without MayBegin, final delta, converted pinch, subpixel accumulation, momentum filtering, retouch and cancel |
+| Outside release | **Passed:** five nonzero samples and exactly one End reach the same owner after the pointer leaves the moved video; release includes the final delta and completes the fling |
+| Unfocused native pinch | **Passed:** sender is another window of the same Playground process; PiP stays unfocused and the browser key window remains unchanged; 640×360 grows to 832×468 |
+| Native burst/shrink/rest/cancel | **Passed:** 24 fractional pinch samples produce one synchronous-burst geometry submission; native shrink reaches 448×252; outside cancellation/rest does not start a fling |
+| Portrait and containment | **Passed:** unfocused native pinch grows a 360×640 player to 609×1083 at this display's height limit; recorded motion rectangles remain inside available area `(0, 34, 1728, 1083)` |
+| Ordinary input | **Passed:** actual volume-slider and line-wheel targets leave geometry unchanged; with PiP closed, three native pixel samples scroll the owned tall fixture by 360 CSS pixels through Cocoa/APZ |
+| Controls | **Passed:** trusted Play/Pause and Close; fullscreen input guard and prior-size restoration; preference disable/restoration; a trusted button click interrupts coast |
+| Original mouse release | **Passed for the trusted DOM path:** ordinary release retains position; Command-modified release uses the existing corner rule with the new inset |
+| Ordinary native mouse inertia | **Implemented; not proven by runtime input:** Computer Use attempts did not produce Cocoa MouseStart/Move/End. One attempt delivered trusted DOM down/up events, but that does not establish ordinary AppKit dragging or post-release inertia. Physical verification remains required |
 
-There are six feedback scenarios plus 11 existing motion scenarios, with separate portrait, control, input-guard and webpage receipts. Pinch synthesis uses an NSEvent test object with native accessors and the real router; it does not post OS hardware events. Momentum replay uses Gecko's trusted `mozIsMomentum` test flag; it does not reproduce an OS momentum tail.
+The portable tests ran at the tuning commit; their JS, test and control inputs are unchanged by the later native atom correction. Native replay uses Gecko test APIs and trusted chrome events. It does not reproduce physical trackpad input or the complete OS momentum stream. There are six feedback replay scenarios, 11 existing motion scenarios and a separate new tuning replay, with portrait/control/ordinary-input checks.
 
-**Not run:** physical trackpad release/pinch, subjective video smoothness and inertia tuning, magnify while another application is active, multiple physical monitors/display reconfiguration, physical AppKit mouse dragging, Linux or Windows runtime. The global monitor cannot suppress input in another application; actual background delivery and effects on the foreground app need a physical check. Automated unfocused pinch proves the case where the main Playground browser window is active. A single native rectangle per frame removes the previous two-call path but does not alone prove smooth remote-video rendering.
+## Cursor evidence and limitations
 
-## Playground compatibility and daily preservation
+After the first accepted nonzero pan, the native hide API reports success. End applies the last window delta, then relocates the cursor by the actual native window-origin change and balances the hide. In the measured release, the player moved by `(+48, +24)` CSS points and the cursor moved from `(1120, 580)` to `(1168, 604)`. Following inertia does not keep moving the pointer.
+
+Native cancellation, disabling the feature, Computer Use Escape and closing the player during an active hidden-cursor gesture all cleared ownership/hide state. A read-only CoreGraphics position probe measured release coordinates independently. The supplemental `CGCursorIsVisible` diagnostic changed true → false → true in the foreground test, but Apple marks that getter deprecated/no longer supported; it is not treated as physical visual acceptance. Production does not use it.
+
+Marionette's recommended `focusmanager.testmode=true` allows background focus and suppresses normal widget focus adjustments. The cursor probe temporarily disabled it to obtain a real foreground Playground; its prior value was restored. This test-profile adjustment did not affect main Zen. CoreGraphics hiding can depend on foreground status, so cursor visibility during a physical pan above another active app remains unverified.
+
+Inactive-application pinch was investigated through public NSEvent routing and current gesture phases. This amendment does **not** fix missing physical magnify delivery while another app is active. Modern phase-bearing magnify is retained; legacy BeginGesture, private multitouch hooks and forced activation were not added. The user explicitly permits leaving this lower-priority behavior unresolved.
+
+Primary API references: [cursor hiding](https://developer.apple.com/documentation/coregraphics/cgdisplayhidecursor%28_%3A%29), [cursor relocation](https://developer.apple.com/documentation/coregraphics/cgwarpmousecursorposition%28_%3A%29), [deprecated visibility diagnostic](https://developer.apple.com/documentation/coregraphics/cgcursorisvisible%28%29), [global NSEvent monitor](https://developer.apple.com/documentation/appkit/nsevent/addglobalmonitorforevents%28matching%3Ahandler%3A%29), [modern event phases](https://developer.apple.com/documentation/appkit/nsevent/phase-swift.property), [legacy BeginGesture](https://developer.apple.com/documentation/appkit/nsresponder/begingesture%28with%3A%29).
+
+## Compatibility and daily preservation
 
 | Check | Result |
 |---|---|
 | Profile provenance | **Passed:** same originally fresh managed profile; Sync signed out; no personal profile data imported |
-| Native UI MCP | **Passed on both launches:** real persistent stdio server exposes seven tools; guarded chrome inspection, actual Space switch/return and viewport capture succeed on the exact source/PID |
-| FoxPilot | **Passed on both launches:** owned loopback navigation, fresh snapshot, form-button action and actual result readback; ordinary broker has only main driver `8322c72f-d31d-40b3-9bf3-b544a62f5e4d`, Playground only `298899a6-eb42-4ff3-85be-c46dc155e309` |
-| Extensions | **Passed:** all five independently sourced signed XPIs retain their active status and versions after restart |
-| Enpass | **Passed for real native transport on both launches:** the test extension receives `greetings` and `app_locked_status_result` from the actual desktop application without an untrusted-browser response. Pairing/unlock/autofill were accepted previously and not repeated |
-| Cookie/storage | **Passed:** existing persistent synthetic HTTP cookie `zen_probe=synthetic-v1` and counter `41` survive normal quit/restart at the same loopback origin; the root URL never reseeds |
-| Tabs and Spaces | **Passed:** hashes match for order, membership, pinned/essential/container state, prior selection and two Spaces. The wrapper's expected new home tab is counted separately; owned temporary and diagnostic tabs were closed |
-| Normal shutdown | **Passed:** only verified Playground PID81409 was quit; exit was confirmed before relaunch as PID84544 |
-| Update protection | **Passed:** live packaged `AppConstants.MOZ_UPDATER` is false before and after restart |
-| Runtime diagnostics | **Passed:** no own-source PiP module console errors; error/warning oracle verified with positive and negative controls |
-| Daily Zen | **Unchanged:** PID61722; executable SHA-256 `4cd01b153aa0caec9c28f7b5ac26df83d3d1442142382e7973cceee333bfb9d5`; complete application tree `9209b88de7f82e429e6cdfb396558b58d2f994064d0e34a1d4908620ba348f49`; signature remains valid. Personal profile was not accessed |
+| Native UI MCP | **Passed on both launches:** seven tools, guarded inspection, actual Space switch/return and viewport capture on the exact source/PID |
+| FoxPilot | **Passed on both launches:** synthetic page action/readback; ordinary broker has only main driver `8322c72f-d31d-40b3-9bf3-b544a62f5e4d`, Playground only `298899a6-eb42-4ff3-85be-c46dc155e309`; Playground's complete port list remains `[8091]` |
+| Extensions | **Passed:** all five independently sourced signed XPIs retain active status/version after restart: uBlock 1.75.0, Keepa 5.66, Return YouTube Dislike 4.0.6, Enpass 6.11.18.2, FoxPilot 1.0.22 |
+| Enpass | **Passed for native transport on both launches:** fresh background-lifetime logs show actual desktop `greetings` and `app_locked_status_result`, without an untrusted-browser response. Previously accepted pairing/unlock/autofill were not repeated; Keepa CAPTCHA was not revisited |
+| Cookie/storage | **Passed:** the existing synthetic persistent cookie and counter `41` survive normal quit/restart at the same origin on port 8776. Root navigation never reseeds them |
+| Tabs and Spaces | **Passed with launcher qualification:** order, membership, pinned/essential/container state and two Spaces match prior hashes. The launcher selects a new home tab on each run; the known prior fixture selection was explicitly restored before comparison. The two expected added home tabs were counted, and owned temporary tabs closed |
+| Normal shutdown | **Passed:** only verified Playground PID37808 was quit; exit was confirmed before relaunch as PID41361 |
+| Updater/diagnostics | **Passed on both launches:** packaged `MOZ_UPDATER=false`; no own-source PiP module console errors; error/warning oracle has positive and negative controls |
+| Daily Zen | **Passed:** main PID61722 still runs the same application; executable/tree digests and complete signature match the before snapshot; the personal profile was not accessed |
 
-Extension versions: uBlock Origin 1.75.0, Keepa 5.66, Return YouTube Dislike 4.0.6, Enpass 6.11.18.2 and FoxPilot 1.0.22. This pass refreshes persistence, FoxPilot operation and Enpass transport. The user's already accepted extension/autofill checks and abandoned Keepa CAPTCHA were not reopened. Existing complete port lists `[8089]` for main and `[8091]` for Playground were reused; see [the routing audit](foxpilot-routing-audit.md).
+The main executable remains `4cd01b153aa0caec9c28f7b5ac26df83d3d1442142382e7973cceee333bfb9d5`; its application tree remains `9209b88de7f82e429e6cdfb396558b58d2f994064d0e34a1d4908620ba348f49`.
 
-Current machine-local receipts are in `.zen-local/pip-gestures/0edecd132a426d59d50fd69c14cc08277ed03548/`, with build/package/deployment manifests under `.zen-local/builds/`, `artifacts/`, `playground-artifacts/` and `deployments/`. Before/after identity, native MCP, signed application, extension, sanitized Enpass, FoxPilot and session records bind the checks to the exact package and processes. Session labels/URLs are hashed at collection; Enpass diagnostics retain only whitelisted command names/booleans. Profiles, private browsing data and raw native logs are not committed.
+Machine-local evidence is under `.zen-local/pip-tuning/`: build/import/export/test logs, per-launch source/package identity, gesture/control/cursor observations, MCP captures, sanitized Enpass status, FoxPilot readbacks, cookie/extension/restart logs, session hashes and daily/signature preservation. No profiles, private URLs, vault records or raw native-app logs are committed.
 
-## Hardware acceptance and prior candidate
+## Manual acceptance and retained packages
 
-The previous candidate `6a4b03ff26dc825730d778962e896c4d82a74903` passed converted-wheel geometry and control checks but the user found outside-release, focus and smoothness defects on their trackpad. Its signed package and receipts remain retained as historical evidence/rollback. Those earlier automatic results are not treated as acceptance of this update.
+The user found the preceding candidate generally usable but requested easier flings, an edge gap, cursor relocation and mouse inertia. Earlier automatic checks and that partial acceptance do not establish acceptance of this amendment. The preceding `0edecd13` package and receipts remain retained.
 
-The animated landscape PiP fixture is left open in the updated Playground for a physical check. Test release when the cursor ends outside the moved video, pinch without clicking PiP first, pinch in both directions while watching the video, rest before release and a new touch during coast. Also test pinch with another app active if that background behavior is required. Record the result before checking Future Improvements item 2 or replacing daily Zen. To recreate the fixture later, serve `tools/compatibility/probe_server.py --port 8776`, open `http://127.0.0.1:8776/pip` in the identified Playground, click Play and open PiP.
+The updated animated landscape PiP is left open for a physical check: make a modest diagonal throw, pan then release outside the original video, confirm the cursor hides and returns at the translated release point, and fling using an ordinary mouse drag. Check a paused release, pinch smoothness and controls too. Inactive-app pinch is optional. Multiple physical monitors, actual background cursor behavior, Linux and Windows runtime have not been tested.
+
+Keep Future Improvements item 2 open until the remaining physical checks pass. Daily Zen remains on its previous package. To recreate the fixture later, serve `tools/compatibility/probe_server.py --port 8776`, open `http://127.0.0.1:8776/pip` in the verified Playground, click Play and open PiP.
