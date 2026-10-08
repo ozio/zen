@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "zen-playground": {
+      "command": "python3",
+      "args": [
+        "/absolute/path/to/Zen/tools/playground/server.py",
+        "serve",
+        "--repo",
+        "/absolute/path/to/Zen"
+      ]
+    }
+  }
+}

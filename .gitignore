@@ -28,6 +28,11 @@ locales/firefox-l10n/
 
 mozconfig
 
+# Personal development artifacts, profiles, receipts and agent coordination.
+/.zen-local/
+/.unlazy/
+/.codex/config.toml
+
 build/signing/env/
 build/signing/nss_config/
 build/signing/cert.pem
