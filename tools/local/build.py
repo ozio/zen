@@ -13,10 +13,10 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from core import (Context, DevError, assert_stopped, atomic_json, browser_binary,
+from core import (Context, DevError, assert_stopped, atomic_json, browser_binary, copy_tree,
                   build_env, host_platform, inventory_digest, is_link, make_read_only,
                   no_symlink_ancestors, port_available, read_json, require_sha,
-                  sha256_file, source_stamp, toolchains, tree_inventory, utc_now)
+                  sha256_file, source_stamp, toolchains, tree_inventory, utc_now, verify_mac_signature)
 from download import prefetch_firefox
 
 MARKER = "ZEN PLAYGROUND"
@@ -211,6 +211,8 @@ def verify_artifact(ctx: Context, sha: str) -> Dict[str, Any]:
     # POSIX write bits reveal accidental mutation even if contents happen to match.
     if platform.system() != "Windows" and any(path.stat().st_mode & 0o222 for path in [root, *root.rglob("*")]):
         raise DevError("Artifact has writable files; expected a sealed standalone package")
+    if manifest.get("code_signing", {}).get("verified") is True:
+        verify_mac_signature(ctx, bundle, required=True)
     return manifest
 
 
@@ -255,6 +257,11 @@ def package(ctx: Context, args: Any) -> Dict[str, Any]:
         target.parent.mkdir(parents=True, mode=0o700)
         # Developer dist bundles use symlinks into the object/source tree. Materialize every file.
         shutil.copytree(bundle, target, symlinks=False)
+        # Gecko consumes these development sentinels at startup. Signing them as
+        # resources would invalidate a writable installed app's signature on launch.
+        if platform.system() == "Darwin":
+            for sentinel in target.rglob(".purgecaches"):
+                sentinel.unlink()
         binary = browser_binary(target)
         if source_stamp(target) != sha:
             raise DevError("Built bundle SourceStamp is not current source SHA; artifact left pending")
@@ -340,14 +347,18 @@ def stage_mac_playground(ctx: Context, manifest: Dict[str, Any]) -> Dict[str, st
         if old["source_sha"] == sha:
             if not receipt_path.is_file() or read_json(receipt_path) != old_receipt:
                 raise DevError("Playground deployment receipt is inconsistent")
+            if old.get("code_signing", {}).get("verified") is True:
+                verify_mac_signature(ctx, target, required=True)
             return {"binary":str(binary), "bundle":str(target), "deployment_manifest":str(receipt_path)}
     if not os.access(target.parent, os.W_OK):
         raise DevError("Applications folder is not writable. Use run playground --in-artifact; Enpass may require an Applications-folder installation.")
     pending = target.with_name(".zen-playground-pending-" + uuid.uuid4().hex + ".app")
     previous = target.with_name(".zen-playground-previous-" + uuid.uuid4().hex + ".app")
-    shutil.copytree(Path(manifest["bundle"]), pending, symlinks=False)
+    copy_tree(Path(manifest["bundle"]), pending)
     if tree_inventory(pending) != manifest["files"]:
         raise DevError("Secondary playground copy is incomplete; pending app retained for inspection")
+    if manifest.get("code_signing", {}).get("verified") is True:
+        verify_mac_signature(ctx, pending, required=True)
     moved_old = False
     moved_new = False
     try:
@@ -358,6 +369,8 @@ def stage_mac_playground(ctx: Context, manifest: Dict[str, Any]) -> Dict[str, st
         moved_new = True
         if source_stamp(target) != sha or sha256_file(binary) != manifest["binary_sha256"]:
             raise DevError("Secondary application identity mismatch")
+        if manifest.get("code_signing", {}).get("verified") is True:
+            verify_mac_signature(ctx, target, required=True)
         receipt = {"schema_version":1, "root":str(ctx.root), "source_sha":sha,
                    "bundle":str(target), "binary":str(binary), "binary_sha256":manifest["binary_sha256"],
                    "artifact_manifest":str(origin), "tree_sha256":manifest["tree_sha256"], "created_at":utc_now()}

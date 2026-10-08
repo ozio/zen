@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from build import verify_artifact
-from core import (Context, DevError, assert_stopped, atomic_json, browser_binary,
+from core import (Context, DevError, assert_stopped, atomic_json, browser_binary, copy_tree,
                   host_platform, inventory_digest, is_link, make_read_only, no_symlink_ancestors,
-                  read_json, require_sha, sha256_file, source_stamp, tree_inventory, utc_now)
+                  read_json, require_sha, sha256_file, source_stamp, tree_inventory, utc_now, verify_mac_signature)
 
 REQUIRED_CHECKS = ("standalone", "profile_isolation", "extensions", "cookies_sessions", "enpass_native_host")
 
@@ -161,6 +161,7 @@ def create_backup(ctx: Context, app: Path, root: Path, profile: Path,
                   reason: str, candidate_sha: Optional[str] = None) -> Tuple[Path, Dict[str, Any]]:
     assert_stopped([app, profile], ctx.runner)
     before = _snapshot(app, root, profile)
+    signed_app = verify_mac_signature(ctx, app)
     _standalone_links(app)
     _standalone_links(profile)
     needed = sum(item.get("size", 0) for item in before["app_files"] + before["profile_files"])
@@ -171,7 +172,7 @@ def create_backup(ctx: Context, app: Path, root: Path, profile: Path,
     backup_app = directory / "app" / app.name
     backup_app.parent.mkdir(mode=0o700)
     # App snapshot is standalone, profile snapshot retains authored links without following them.
-    shutil.copytree(app, backup_app, symlinks=True)
+    copy_tree(app, backup_app, preserve_links=True)
     shutil.copytree(profile, directory / "profile", symlinks=True)
     registry = directory / "registry"
     registry.mkdir(mode=0o700)
@@ -185,8 +186,11 @@ def create_backup(ctx: Context, app: Path, root: Path, profile: Path,
     _standalone_links(backup_app)
     app_files = tree_inventory(backup_app, allow_links=True)
     profile_files = tree_inventory(directory / "profile", allow_links=True)
-    if profile_files != before["profile_files"] or _registry_inventory(registry) != before["registry"]:
+    if (app_files != before["app_files"] or profile_files != before["profile_files"]
+            or _registry_inventory(registry) != before["registry"]):
         raise DevError("Backup verification failed; deployment stopped")
+    if signed_app:
+        verify_mac_signature(ctx, backup_app, required=True)
     manifest = {"schema_version": 1, "id": ident, "created_at": utc_now(), "reason": reason,
                 "platform": host_platform(), "original_app": str(app), "profile_root": str(root),
                 "original_profile": str(profile), "app": str(backup_app),
@@ -196,7 +200,7 @@ def create_backup(ctx: Context, app: Path, root: Path, profile: Path,
                 "registry_modes": before["registry_modes"],
                 "profile_files": profile_files, "profile_tree_sha256": inventory_digest(profile_files),
                 "registry": before["registry"], "candidate_sha": candidate_sha,
-                "result": "complete"}
+                "mac_code_signature_verified": signed_app, "result": "complete"}
     atomic_json(directory / "manifest.json", manifest)
     make_read_only(directory)
     return directory, manifest
@@ -228,11 +232,12 @@ def verify_backup(ctx: Context, directory: Path) -> Dict[str, Any]:
             or inventory_digest(profile_files) != manifest["profile_tree_sha256"]
             or _registry_inventory(directory / "registry") != manifest["registry"]):
         raise DevError("Backup integrity check failed")
+    verify_mac_signature(ctx, app, required=manifest.get("mac_code_signature_verified") is True)
     return manifest
 
 
 def _writable_copy(source: Path, destination: Path, preserve_links: bool = False) -> None:
-    shutil.copytree(source, destination, symlinks=preserve_links)
+    copy_tree(source, destination, preserve_links=preserve_links)
     # Snapshot files are sealed. Restore owner writes without granting extra group/other access.
     for path in [destination, *destination.rglob("*")]:
         if not path.is_symlink():
@@ -272,11 +277,15 @@ def install_main(ctx: Context, args: Any) -> Dict[str, Any]:
         _writable_copy(Path(manifest["bundle"]), pending)
         if tree_inventory(pending) != manifest["files"]:
             raise DevError("Candidate changed while copying; existing main app preserved")
+        if manifest.get("code_signing", {}).get("verified") is True:
+            verify_mac_signature(ctx, pending, required=True)
         assert_stopped([app, profile], ctx.runner)
         previous = _replace_directory(pending, app)
         try:
             if source_stamp(app) != sha or sha256_file(browser_binary(app)) != manifest["binary_sha256"]:
                 raise DevError("Installed app read-back differs from candidate")
+            if manifest.get("code_signing", {}).get("verified") is True:
+                verify_mac_signature(ctx, app, required=True)
             if tree_inventory(profile, allow_links=True) != old["profile_files"] or _registry_inventory(root) != old["registry"]:
                 raise DevError("Main profile/registries changed during installation")
         except BaseException:
@@ -336,6 +345,7 @@ def rollback(ctx: Context, args: Any) -> Dict[str, Any]:
         _restore_modes(profile_pending, original["profile_modes"])
         if tree_inventory(app_pending, True) != original["app_files"] or tree_inventory(profile_pending, True) != original["profile_files"]:
             raise DevError("Restored snapshot copy does not match backup; main unchanged")
+        verify_mac_signature(ctx, app_pending, required=original.get("mac_code_signature_verified") is True)
         assert_stopped([app, profile], ctx.runner)
         app_previous = _replace_directory(app_pending, app)
         profile_previous = None
@@ -354,6 +364,7 @@ def rollback(ctx: Context, args: Any) -> Dict[str, Any]:
                     or tree_inventory(profile, True) != original["profile_files"]
                     or _registry_inventory(root) != original["registry"]):
                 raise DevError("Rollback read-back differs from original snapshot")
+            verify_mac_signature(ctx, app, required=original.get("mac_code_signature_verified") is True)
         except BaseException:
             if profile_previous:
                 rejected = profile.with_name("." + profile.name + ".zen-rejected-" + uuid.uuid4().hex[:8])

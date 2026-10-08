@@ -120,6 +120,36 @@ def make_read_only(root: Path) -> None:
     os.chmod(root, root.stat().st_mode & 0o777 & ~0o222)
 
 
+def copy_tree(source: Path, destination: Path, preserve_links: bool = False) -> None:
+    """Preserve macOS app signing metadata, including non-Mach-O code xattrs."""
+    if destination.exists() or destination.is_symlink():
+        raise DevError("Copy destination already exists: %s" % destination)
+    if platform.system() == "Darwin" and source.suffix == ".app":
+        result = subprocess.run(["/usr/bin/ditto", "--rsrc", "--extattr", str(source), str(destination)],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode:
+            raise DevError("macOS application copy failed: %s" % result.stderr.strip())
+    else:
+        shutil.copytree(source, destination, symlinks=preserve_links)
+
+
+def verify_mac_signature(ctx: "Context", bundle: Path, required: bool = False) -> bool:
+    """Check nested code after copying; file hashes do not include signing xattrs."""
+    if platform.system() != "Darwin":
+        return False
+    if not (bundle / "Contents" / "Info.plist").is_file():
+        if required:
+            raise DevError("Signed macOS application is missing Info.plist: %s" % bundle)
+        return False
+    displayed = ctx.runner.run(["/usr/bin/codesign", "--display", str(bundle)], ctx.root, check=False)
+    if displayed.returncode:
+        if not required and "code object is not signed at all" in displayed.stderr:
+            return False
+        raise DevError("Cannot identify macOS application signature: %s\n%s" % (bundle, displayed.stderr[-2000:]))
+    ctx.runner.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(bundle)], ctx.root)
+    return True
+
+
 class Runner:
     """No shell interpolation; long builds stream to a capped local log."""
 
@@ -276,7 +306,7 @@ def build_env(ctx: Context, chain: Dict[str, Any]) -> Dict[str, str]:
                 "CARGO_HOME": str(ctx.local / "cache" / "cargo"),
                 "npm_config_cache": str(ctx.local / "cache" / "npm"),
                 "SCCACHE_DIR": str(ctx.local / "cache" / "sccache"),
-                "SCCACHE_CACHE_SIZE": "4G", "MOZ_CRASHREPORTER_DISABLE": "1"})
+                "SCCACHE_CACHE_SIZE": "4G", "MOZ_CRASHREPORTER_DISABLE": "1", "MOZ_NOSPAM": "1"})
     sccache = shutil.which("sccache", path=env["PATH"])
     if sccache:
         env["RUSTC_WRAPPER"] = sccache

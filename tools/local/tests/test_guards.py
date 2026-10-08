@@ -230,6 +230,48 @@ class ContainmentTests(SandboxTest):
 
 
 class MacPlaygroundTests(SandboxTest):
+    @unittest.skipUnless(sys.platform == "darwin", "macOS package signing regression")
+    def test_real_signed_package_omits_consumed_gecko_cache_sentinels(self):
+        source = self.root / "engine" / "dist" / "Zen.app"
+        binary = source / "Contents" / "MacOS" / "zen"
+        binary.parent.mkdir(parents=True)
+        shutil.copyfile("/bin/echo", binary)
+        binary.chmod(0o755)
+        (source / "Contents" / "Info.plist").write_bytes(plistlib.dumps({
+            "CFBundleExecutable": "zen", "CFBundleIdentifier": "test.zen.local",
+            "CFBundlePackageType": "APPL"}))
+        resources = source / "Contents" / "Resources"
+        (resources / "browser").mkdir(parents=True)
+        (resources / "application.ini").write_text("[App]\nSourceStamp=%s\n" % FORK)
+        for root in (resources, resources / "browser"):
+            (root / ".purgecaches").write_text("\n")
+        (resources / "browser" / "keep.txt").write_text("preserve")
+        receipt = self.ctx.local / "builds" / FORK / "build.json"
+        core.atomic_json(receipt, {"result": "pass", "ui_only": False, "source_sha": FORK,
+                                  "source_snapshot": self.ctx.snapshot()})
+        with patch("build.toolchains", return_value={"python": {"path": sys.executable}}), \
+                patch("build.build_env", return_value=dict(os.environ)), \
+                patch.object(self.ctx.runner, "logged"):
+            manifest = build.package(self.ctx, SimpleNamespace(bundle=str(source), signing_identity="-"))
+        copied = Path(manifest["bundle"])
+        self.assertEqual(list(copied.rglob(".purgecaches")), [])
+        self.assertEqual((copied / "Contents/Resources/browser/keep.txt").read_text(), "preserve")
+        self.assertTrue((resources / "browser/.purgecaches").exists())
+        self.assertTrue(core.verify_mac_signature(self.ctx, copied, required=True))
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS signing xattr regression")
+    def test_signed_non_macho_metadata_survives_application_copy(self):
+        source = self.base / "Source.app"
+        source.mkdir()
+        script = source / "helper.sh"
+        script.write_text("#!/bin/sh\nexit 0\n")
+        script.chmod(0o755)
+        subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(script)], check=True, capture_output=True)
+        destination = self.base / "Copied.app"
+        deploy._writable_copy(source, destination)
+        verified = subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(destination / "helper.sh")], capture_output=True, text=True)
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+
     def setUp(self):
         super().setUp()
         self.applications = self.base / "Applications"
@@ -310,6 +352,19 @@ class MacPlaygroundTests(SandboxTest):
         self.assertFalse(self.target.exists())
         self.assertFalse((self.ctx.local / "deployments" / "playground" / "current.json").exists())
         self.assertEqual(len(list(self.applications.glob(".zen-playground-pending-*.app"))), 1)
+
+    def test_copy_signature_failure_preserves_existing_app_and_receipt(self):
+        old = self.artifact()
+        build.stage_mac_playground(self.ctx, old)
+        current = self.ctx.local / "deployments" / "playground" / "current.json"
+        before = current.read_bytes()
+        candidate = self.artifact(HEAD)
+        candidate["code_signing"] = {"verified": True}
+        with patch("build.verify_mac_signature", side_effect=core.DevError("signature metadata missing")):
+            with self.assertRaisesRegex(core.DevError, "signature metadata missing"):
+                build.stage_mac_playground(self.ctx, candidate)
+        self.assertEqual(current.read_bytes(), before)
+        self.assertEqual(core.tree_inventory(self.target), old["files"])
 
 
 class StagingTests(SandboxTest):
