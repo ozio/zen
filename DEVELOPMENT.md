@@ -4,6 +4,8 @@ This is the local workflow for the personal [`ozio/zen`](https://github.com/ozio
 
 Use [AGENTS.md](AGENTS.md) for repository rules, [UPSTREAM.md](UPSTREAM.md) for periodic updates and [PR_WORKFLOW.md](PR_WORKFLOW.md) for external candidates. The command implementation and its `--help` output are authoritative for available flags; keep these instructions synchronized when changing that interface.
 
+The completed first native setup and exact tested/installed package are recorded in [docs/macos-validation.md](docs/macos-validation.md). Its scope notes distinguish actual macOS runtime results, accepted plugin checks and untested Linux/Windows recipes.
+
 ## Before building
 
 Run from the repository root:

@@ -4,6 +4,8 @@ This repository maintains the user's daily Zen browser after their move from Arc
 
 Read [DEVELOPMENT.md](DEVELOPMENT.md) for setup, platform recipes, playground validation and installation. Read [UPSTREAM.md](UPSTREAM.md) before updating Zen or Firefox, and [PR_WORKFLOW.md](PR_WORKFLOW.md) when the user supplies an external PR.
 
+The completed macOS setup, exact installed candidate, local evidence and original-release rollback are recorded in [docs/macos-validation.md](docs/macos-validation.md). Use its explicit `--sha` to launch that retained package if documentation-only commits have advanced HEAD.
+
 ## Workflow and authorization
 
 - Default to the current branch, normally `dev`, and commit and push there when authorized. Do not introduce feature branches or a mandatory PR workflow. Temporary detached worktrees are appropriate for candidate builds and external PR tests.
