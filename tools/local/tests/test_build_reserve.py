@@ -111,6 +111,30 @@ class BuildReserveTests(unittest.TestCase):
             with self.assertRaisesRegex(DevError, "full mach build"):
                 build(self.ctx, SimpleNamespace(ui=ui, jobs=jobs, native_incremental=True))
 
+    def test_fresh_import_source_stamp_is_metadata_but_other_config_changes_are_refused(self):
+        self.write("engine/mozconfig", "export MOZ_SOURCE_CHANGESET=%s\nunchanged native config\n" % self.base)
+        receipt = json.loads(self.receipt.read_text())
+        receipt["mozconfig_sha256"] = sha256_file(self.root / "engine/mozconfig")
+        self.receipt.write_text(json.dumps(receipt))
+        self.cocoa_patch()
+        self.write("engine/mozconfig", "export MOZ_SOURCE_CHANGESET=%s\nunchanged native config\n" % self.ctx.sha())
+        with self.cocoa_baseline():
+            self.assertEqual(incremental_disk_baseline(self.ctx, self.chain, 8,
+                                                      native_incremental=True), self.base)
+            self.write("engine/mozconfig", "export MOZ_SOURCE_CHANGESET=%s\nchanged compiler flag\n" % self.ctx.sha())
+            with self.assertRaises(DevError):
+                incremental_disk_baseline(self.ctx, self.chain, 8, native_incremental=True)
+
+    def test_ambiguous_source_stamp_is_not_ignored(self):
+        self.write("engine/mozconfig", "export MOZ_SOURCE_CHANGESET=%s\n" % self.base)
+        receipt = json.loads(self.receipt.read_text())
+        receipt["mozconfig_sha256"] = sha256_file(self.root / "engine/mozconfig")
+        self.receipt.write_text(json.dumps(receipt))
+        self.cocoa_patch()
+        self.write("engine/mozconfig", "export MOZ_SOURCE_CHANGESET=%s\nexport MOZ_SOURCE_CHANGESET=%s\n" % (self.ctx.sha(), self.ctx.sha()))
+        with self.cocoa_baseline(), self.assertRaises(DevError):
+            incremental_disk_baseline(self.ctx, self.chain, 8, native_incremental=True)
+
     def test_preferences_need_normal_reserve(self):
         self.write("prefs/zen/test.yaml", "- name: zen.test\n  value: true\n")
         self.commit()

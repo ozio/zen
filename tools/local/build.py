@@ -191,10 +191,20 @@ def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int,
                 and receipt.get("platform") == host_platform()
                 and receipt.get("engine") == str(ctx.root / "engine")
                 and receipt.get("object_dirs") == objects
-                and receipt.get("toolchains") == chain
-                and receipt.get("mozconfig_sha256") == sha256_file(config)):
+                and receipt.get("toolchains") == chain):
             continue
         sha = require_sha(receipt.get("source_sha"))
+        if receipt.get("mozconfig_sha256") != sha256_file(config):
+            # Fresh import updates Surfer's source stamp before this check.
+            # Compare its exact bytes after substituting ONLY that metadata;
+            # compiler/SDK/options/job changes still fail the baseline check.
+            normalized, count = re.subn(
+                rb"(?m)^export MOZ_SOURCE_CHANGESET=[0-9a-f]{40}$",
+                b"export MOZ_SOURCE_CHANGESET=" + sha.encode("ascii"),
+                config.read_bytes(),
+            )
+            if count != 1 or hashlib.sha256(normalized).hexdigest() != receipt.get("mozconfig_sha256"):
+                continue
         result = ctx.git("diff", "--name-only", sha, "HEAD", "--", *roots, check=False)
         if result.returncode:
             continue
