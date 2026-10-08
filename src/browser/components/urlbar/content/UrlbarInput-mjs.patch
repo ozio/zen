@@ -1,0 +1,270 @@
+diff --git a/browser/components/urlbar/content/UrlbarInput.mjs b/browser/components/urlbar/content/UrlbarInput.mjs
+index 6f0fe16983c8b65295224c32bd2d71a31a88f0a0..ecac159dc44ada8eb987509ab4db4ee8ecc24d8f 100644
+--- a/browser/components/urlbar/content/UrlbarInput.mjs
++++ b/browser/components/urlbar/content/UrlbarInput.mjs
+@@ -3,10 +3,261 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ import { UrlbarInputBase } from "chrome://browser/content/urlbar/UrlbarInputBase.mjs";
++import { UrlbarShared } from "chrome://browser/content/urlbar/UrlbarShared.mjs";
+ 
+-/**
+- * The address bar input, backing the `moz-urlbar` custom element.
+- */
+-export class UrlbarInput extends UrlbarInputBase {}
++/** Match explicit engine names/aliases first, then prefixes in settings order. */
++export function matchZenSiteSearch(text, engines) {
++  const normalize = value => value.trim().normalize("NFKC").toLowerCase();
++  const needle = normalize(text);
++  if (
++    !needle ||
++    /^[a-z][a-z\d+.-]*:\/\//i.test(needle) ||
++    /[/?#]/.test(needle)
++  ) {
++    return null;
++  }
++  const visible = engines.filter(engine => !engine.hideOneOffButton);
++  const terms = engine =>
++    [engine.name, ...(engine.aliases || [])].map(normalize);
++  return (
++    visible.find(engine => terms(engine).includes(needle)) ||
++    visible.find(engine => normalize(engine.name).startsWith(needle)) ||
++    visible.find(engine =>
++      (engine.aliases || []).some(alias => normalize(alias).startsWith(needle))
++    ) ||
++    null
++  );
++}
++
++/** The browser address bar, including Zen's floating Command T input. */
++export class UrlbarInput extends UrlbarInputBase {
++  _zenSiteSearchChanged = () => this._zenUpdateSiteSearch();
++
++  connectedCallback() {
++    super.connectedCallback();
++    if (this.readOnly || this._zenSiteSearchConnected) {
++      return;
++    }
++    this._zenSiteSearchConnected = true;
++    this.controller.engineStore.addObserver(this._zenSiteSearchChanged);
++    this.addEventListener("searchmodechanged", this._zenSiteSearchChanged);
++    this.controller.engineStore
++      .init()
++      .then(this._zenSiteSearchChanged, () => {});
++  }
++
++  disconnectedCallback() {
++    this.controller?.engineStore.removeObserver(this._zenSiteSearchChanged);
++    this.removeEventListener("searchmodechanged", this._zenSiteSearchChanged);
++    this._zenSiteSearchConnected = false;
++    this._zenSiteSearchTrigger = null;
++    super.disconnectedCallback();
++  }
++
++  _zenSiteSearchText() {
++    // URL autofill is only a display completion; match what was actually typed.
++    return this.userTypedValue ?? this.value;
++  }
++
++  _zenSiteSearchCandidate() {
++    if (
++      this.searchMode ||
++      this.isComposing ||
++      !this.controller.engineStore.initialized
++    ) {
++      return null;
++    }
++    return matchZenSiteSearch(
++      this._zenSiteSearchText(),
++      this.controller.engineStore.getEngines()
++    );
++  }
++
++  _zenEnsureSiteSearchUI() {
++    if (this._zenSiteSearchHint) {
++      return;
++    }
++    const make = (tag, className) => {
++      const node = this.document.createElementNS(
++        "http://www.w3.org/1999/xhtml",
++        tag
++      );
++      node.className = className;
++      return node;
++    };
++    const hint = make("button", "zen-site-search-hint");
++    hint.type = "button";
++    hint.hidden = true;
++    hint.setAttribute("aria-keyshortcuts", "Tab");
++    const hintLabel = make("span", "zen-site-search-name");
++    const key = make("kbd", "zen-site-search-key");
++    key.textContent = "Tab";
++    hint.append(hintLabel, key);
++    hint.addEventListener("mousedown", event => event.preventDefault());
++    hint.addEventListener("click", event => {
++      event.preventDefault();
++      event.stopPropagation();
++      const engine = this._zenSiteSearchCandidate();
++      if (engine) {
++        this._zenEnterSiteSearch(engine);
++      }
++    });
++    this._inputContainer.append(hint);
++    this._zenSiteSearchHint = hint;
++    this._zenSiteSearchHintLabel = hintLabel;
++
++    const chip = make("span", "zen-site-search-mode");
++    chip.hidden = true;
++    const icon = make("img", "zen-site-search-icon");
++    icon.alt = "";
++    const label = make("span", "zen-site-search-name");
++    const close = make("button", "zen-site-search-close");
++    close.type = "button";
++    close.textContent = "×";
++    close.setAttribute("data-l10n-id", "urlbar-searchmode-exit-button2");
++    close.setAttribute("aria-keyshortcuts", "Escape");
++    close.addEventListener("mousedown", event => event.preventDefault());
++    close.addEventListener("click", event => {
++      event.preventDefault();
++      event.stopPropagation();
++      this._zenExitSiteSearch();
++    });
++    chip.append(icon, label, close);
++    this._inputContainer.insertBefore(
++      chip,
++      this.inputField.closest(".urlbar-input-box")
++    );
++    this._zenSiteSearchChip = chip;
++    this._zenSiteSearchIcon = icon;
++    this._zenSiteSearchLabel = label;
++  }
++
++  _zenUpdateSiteSearch() {
++    if (!this._zenSiteSearchConnected || !this.inputField) {
++      return;
++    }
++    this._zenEnsureSiteSearchUI();
++    const name = this.searchMode?.engineName;
++    const engine = name && this.controller.engineStore.getEngineByName(name);
++    this._zenSiteSearchChip.hidden = !engine;
++    this.toggleAttribute("zen-site-search-mode", !!engine);
++    if (engine) {
++      this._zenSiteSearchLabel.textContent = `${name}:`;
++      this._zenSiteSearchIcon.src = UrlbarShared.ICON.SEARCH_GLASS;
++      engine.getIconURL().then(
++        icon => {
++          if (
++            icon &&
++            this.searchMode?.engineName === name &&
++            this.isConnected
++          ) {
++            this._zenSiteSearchIcon.src = icon;
++          }
++        },
++        () => {}
++      );
++    } else {
++      this._zenSiteSearchLabel.textContent = "";
++    }
++    const candidate = this.focused && this._zenSiteSearchCandidate();
++    this._zenSiteSearchHint.hidden = !candidate;
++    this._zenSiteSearchHintLabel.textContent = candidate ? candidate.name : "";
++    if (candidate) {
++      this._zenSiteSearchHint.setAttribute(
++        "aria-label",
++        `${candidate.name}: Tab`
++      );
++    }
++  }
++
++  _zenEnterSiteSearch(engine) {
++    this._zenSiteSearchTrigger = {
++      browser: this.window.gBrowser.selectedBrowser,
++      name: engine.name,
++      text: this._zenSiteSearchText(),
++    };
++    this.searchMode = {
++      engineName: engine.name,
++      entry: "tabtosearch",
++      isPreview: false,
++    };
++    this.search("");
++  }
++
++  _zenExitSiteSearch() {
++    const trigger = this._zenSiteSearchTrigger;
++    const sameMode =
++      trigger?.browser === this.window.gBrowser.selectedBrowser &&
++      trigger.name === this.searchMode?.engineName;
++    const text = this.value || (sameMode ? trigger.text : "");
++    this._zenSiteSearchTrigger = null;
++    this.searchMode = null;
++    if (this.view.oneOffSearchButtons) {
++      this.view.oneOffSearchButtons.selectedButton = null;
++    }
++    this.search(text);
++  }
++
++  _on_keydown(event) {
++    if (
++      event.currentTarget !== this.window &&
++      event.target === this.inputField &&
++      !this.isComposing &&
++      !event.isComposing &&
++      !event.ctrlKey &&
++      !event.altKey &&
++      !event.metaKey &&
++      !event.shiftKey &&
++      !this.view.isResultMenuOpen()
++    ) {
++      const engine = event.key === "Tab" && this._zenSiteSearchCandidate();
++      if (
++        engine ||
++        (this.searchMode?.engineName &&
++          (event.key === "Escape" ||
++            (event.key === "Backspace" && !this.value)))
++      ) {
++        event.preventDefault();
++        event.stopPropagation();
++        if (engine) {
++          this._zenEnterSiteSearch(engine);
++        } else {
++          this._zenExitSiteSearch();
++        }
++        return;
++      }
++      // Firefox normally leaves search mode at column zero even with a query.
++      // In Zen, ordinary deletion keeps the site until the query is empty.
++      if (
++        event.key === "Backspace" &&
++        this.searchMode?.engineName &&
++        this.selectionStart === 0 &&
++        this.selectionEnd === 0
++      ) {
++        event.preventDefault();
++        event.stopPropagation();
++        return;
++      }
++    }
++    super._on_keydown(event);
++  }
++
++  _on_input(event) {
++    super._on_input(event);
++    this._zenUpdateSiteSearch();
++  }
++
++  _on_focus(event) {
++    super._on_focus(event);
++    this._zenUpdateSiteSearch();
++  }
++
++  _on_blur(event) {
++    super._on_blur(event);
++    if (this._zenSiteSearchHint) {
++      this._zenSiteSearchHint.hidden = true;
++    }
++  }
++}
+ 
+ customElements.define("moz-urlbar", UrlbarInput);
