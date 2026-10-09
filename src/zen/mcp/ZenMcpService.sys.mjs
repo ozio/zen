@@ -844,7 +844,7 @@ class ZenMcpServiceImpl {
       await IOUtils.writeUTF8(
         file,
         entries.map(entry => JSON.stringify(entry)).join("\n") + "\n",
-        { mode: "append" }
+        { mode: "appendOrCreate" }
       );
       await IOUtils.setPermissions(file, 0o600, false);
     } catch {

@@ -42,8 +42,10 @@ async function fixture() {
     constructor() {
       this.authorities = new Set();
       this.identity = {
-        setPrimary: (scheme, host, port) => this.authorities.add(`${scheme}://${host}:${port}`),
-        remove: (scheme, host, port) => this.authorities.delete(`${scheme}://${host}:${port}`),
+        setPrimary: (scheme, host, port) =>
+          this.authorities.add(`${scheme}://${host}:${port}`),
+        remove: (scheme, host, port) =>
+          this.authorities.delete(`${scheme}://${host}:${port}`),
       };
     }
     registerPathHandler(path, fn) {
@@ -101,15 +103,25 @@ async function fixture() {
     writeJSON: async (path, value) => {
       files.set(path, structuredClone(value));
     },
-    writeUTF8: async (path, value) => {
-      files.set(path, value);
+    writeUTF8: async (path, value, { mode = "overwrite" } = {}) => {
+      if (mode === "append" && !files.has(path)) {
+        throw new Error("Append requires an existing file");
+      }
+      const previous =
+        mode === "append" || mode === "appendOrCreate"
+          ? (files.get(path) ?? "")
+          : "";
+      files.set(path, previous + value);
     },
     setPermissions: async () => {},
     stat: async () => ({ size: 0 }),
     remove: async (path) => files.delete(path),
   };
   globalThis.ChromeUtils = {
-    generateQI: () => function () { return this; },
+    generateQI: () =>
+      function () {
+        return this;
+      },
     defineESModuleGetters(target) {
       Object.assign(target, {
         HttpServer,
@@ -184,7 +196,10 @@ test("Playground is profile-scoped and starts only on numeric loopback with its 
   assert.equal(state.service.kind, "playground");
   assert.equal(state.service.server.host, "127.0.0.1");
   assert.equal(state.service.server.port, 3924);
-  assert.deepEqual([...state.service.server.authorities], ["http://127.0.0.1:3924"]);
+  assert.deepEqual(
+    [...state.service.server.authorities],
+    ["http://127.0.0.1:3924"],
+  );
   const registry = await state.service.addClient("Synthetic test");
   assert.equal(registry.endpoint, "http://127.0.0.1:3924/mcp");
   assert.ok(
@@ -280,6 +295,16 @@ test("audit and change resources never persist page contents, argument values, s
   await state.service.flushAudit();
   const audit = state.files.get("/synthetic/profile/zen-mcp-audit.jsonl");
   assert.ok(!audit.includes("SECRET"));
+  state.service.audit("ping", {}, "ok", Date.now());
+  await state.service.flushAudit();
+  const entries = state.files
+    .get("/synthetic/profile/zen-mcp-audit.jsonl")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].method, "tools/call");
+  assert.equal(entries[1].method, "ping");
   state.service.notify("browser", {
     tabId: "tab-test",
     text: "SECRET PAGE",
@@ -293,17 +318,35 @@ test("native peer EOF releases subscriptions without waiting for a keep-alive", 
   const { service } = await fixture();
   await service.init();
   const waits = [];
-  let finished = 0, removed = 0, close;
+  let finished = 0,
+    removed = 0,
+    close;
   const response = {
-    setStatusLine() {}, setHeader() {},
-    finish() { finished++; },
-    _connection: { input: { asyncWait(...args) { waits.push(args); } } },
+    setStatusLine() {},
+    setHeader() {},
+    finish() {
+      finished++;
+    },
+    _connection: {
+      input: {
+        asyncWait(...args) {
+          waits.push(args);
+        },
+      },
+    },
   };
   const transport = { response, controller: new AbortController() };
   service.transports.add(transport);
   service.protocol = {
-    openStream(spec, write, onClose) { close = onClose; return spec; },
-    removeStream(stream) { assert.equal(stream, transport.stream); removed++; close(); },
+    openStream(spec, write, onClose) {
+      close = onClose;
+      return spec;
+    },
+    removeStream(stream) {
+      assert.equal(stream, transport.stream);
+      removed++;
+      close();
+    },
   };
   service.beginStream({ context: { modern: true } }, transport);
   assert.equal(waits[0][1], Ci.nsIAsyncInputStream.WAIT_CLOSURE_ONLY);
