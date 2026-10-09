@@ -570,3 +570,18 @@ test("client creation is serialized, duplicate names rejected and failed persist
   await assert.rejects(state.credentials.add("failed"));
   assert.equal(state.credentials.list().length, 1);
 });
+
+test("modern cacheable responses declare private zero TTL while legacy wire results stay unchanged", async () => {
+  const { protocol } = fixture();
+  for (const method of ["server/discover", "tools/list", "resources/list", "resources/templates/list", "resources/read"]) {
+    const params = method === "resources/read" ? { uri: "zen://instance-test/state" } : {};
+    const [request, headers] = modern(method, params);
+    const response = await protocol.handle(request, headers, client);
+    assert.equal(response.body.result.ttlMs, 0);
+    assert.equal(response.body.result.cacheScope, "private");
+  }
+  const { headers } = await legacy(protocol, "2025-11-25");
+  const response = await protocol.handle({ jsonrpc: "2.0", id: 10, method: "tools/list" }, headers, client);
+  assert.equal("ttlMs" in response.body.result, false);
+  assert.equal("cacheScope" in response.body.result, false);
+});

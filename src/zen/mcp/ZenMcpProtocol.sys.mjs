@@ -429,6 +429,20 @@ export class ZenMcpProtocol {
       default:
         throw new McpProtocolError(-32601, "Method not found", 404);
     }
+    if (
+      context.modern &&
+      [
+        "server/discover",
+        "tools/list",
+        "resources/list",
+        "resources/templates/list",
+        "resources/read",
+      ].includes(method)
+    ) {
+      // Browser identity and resource membership can change at any time. Keep
+      // modern caches private and immediately stale; legacy results stay intact.
+      result = { ...result, ttlMs: 0, cacheScope: "private" };
+    }
     return {
       body: { jsonrpc: "2.0", id, result: this.complete(result, context) },
     };
