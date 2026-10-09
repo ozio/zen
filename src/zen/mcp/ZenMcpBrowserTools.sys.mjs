@@ -15,9 +15,11 @@ import { ZenMcpDataTools } from "resource:///modules/zen/mcp/ZenMcpDataTools.sys
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   ContextualIdentityService:
-    "resource://gre/modules/ContextualIdentityService.sys.mjs",
-  PictureInPicture: "resource://gre/modules/PictureInPicture.sys.mjs",
-  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
+    "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
+  PictureInPicture:
+    "moz-src:///toolkit/components/pictureinpicture/PictureInPicture.sys.mjs",
+  SessionStore:
+    "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
 });
 
 const page = {

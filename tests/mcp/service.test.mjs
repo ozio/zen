@@ -38,6 +38,13 @@ async function fixture() {
     }
   }
   class HttpServer {
+    constructor() {
+      this.authorities = new Set();
+      this.identity = {
+        setPrimary: (scheme, host, port) => this.authorities.add(`${scheme}://${host}:${port}`),
+        remove: (scheme, host, port) => this.authorities.delete(`${scheme}://${host}:${port}`),
+      };
+    }
     registerPathHandler(path, fn) {
       this.path = path;
       this.handler = fn;
@@ -48,6 +55,7 @@ async function fixture() {
       }
       this.port = port;
       this.host = host;
+      this.authorities.add(`http://localhost:${port}`);
     }
     stop(callback) {
       this.stopped = true;
@@ -173,6 +181,7 @@ test("Playground is profile-scoped and starts only on numeric loopback with its 
   assert.equal(state.service.kind, "playground");
   assert.equal(state.service.server.host, "127.0.0.1");
   assert.equal(state.service.server.port, 3924);
+  assert.deepEqual([...state.service.server.authorities], ["http://127.0.0.1:3924"]);
   const registry = await state.service.addClient("Synthetic test");
   assert.equal(registry.endpoint, "http://127.0.0.1:3924/mcp");
   assert.ok(

@@ -50,7 +50,9 @@ export function nativeMenuVisible(element) {
     return false;
   }
   for (let node = element; node && node !== popup; node = node.parentElement) {
-    const style = element.ownerGlobal.getComputedStyle(node);
+    const style = (
+      element.ownerGlobal ?? element.documentGlobal
+    ).getComputedStyle(node);
     if (
       node.hidden ||
       style.display === "none" ||

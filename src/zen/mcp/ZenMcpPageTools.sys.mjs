@@ -806,7 +806,7 @@ export class ZenMcpPageTools {
     } else {
       const tab = this.service.getTab(args.tabId);
       frame = findFrame(tab, args.frameId);
-      win = tab.ownerGlobal;
+      win = tab.ownerGlobal ?? tab.documentGlobal;
       const page = await this.query(
         args.tabId,
         args.frameId,
@@ -942,15 +942,42 @@ export class ZenMcpPageTools {
     );
     if (args.scope === "browser") {
       const win = this.service.getWindow(args.windowId);
-      // The selected chrome window's global already has the system principal;
-      // evaluate here without enabling RemoteAgent or changing debugging prefs.
-      let value;
+      // Browser chrome forbids window.eval through CSP. A system-principal
+      // sandbox exposes the explicitly selected window without changing CSP
+      // or enabling a remote debugging listener.
+      const sandbox = Cu.Sandbox(
+        Services.scriptSecurityManager.getSystemPrincipal(),
+        {
+          sandboxPrototype: win,
+          wantXrays: false,
+          sandboxName: "Zen MCP browser JavaScript",
+        }
+      );
+      Object.assign(sandbox, {
+        window: win,
+        Services,
+        ChromeUtils,
+        Components,
+        Cc,
+        Ci,
+        Cu,
+        Cr,
+        IOUtils,
+        PathUtils,
+        setTimeout: win.setTimeout.bind(win),
+        clearTimeout: win.clearTimeout.bind(win),
+      });
       try {
-        value = await withDeadline(
-          Promise.resolve(win.eval(args.source)),
+        const value = await withDeadline(
+          Promise.resolve(Cu.evalInSandbox(args.source, sandbox)),
           timeoutMs,
           signal
         );
+        return {
+          windowId: args.windowId,
+          scope: "browser",
+          ...boundedValue(value),
+        };
       } catch (error) {
         if (error instanceof McpToolError) {
           throw error;
@@ -960,12 +987,9 @@ export class ZenMcpPageTools {
           scope: "browser",
           exception: boundedValue(error?.message || String(error)).value,
         };
+      } finally {
+        Cu.nukeSandbox(sandbox);
       }
-      return {
-        windowId: args.windowId,
-        scope: "browser",
-        ...boundedValue(value),
-      };
     }
     const tab = this.service.getTab(args.tabId);
     const frame = findFrame(tab, args.frameId);

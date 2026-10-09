@@ -406,6 +406,10 @@ class ZenMcpServiceImpl {
       try {
         // Bind the numeric IPv4 loopback explicitly, without hostname resolution.
         server._start(port, "127.0.0.1");
+        // httpd assigns localhost as its initial primary authority, even when
+        // the socket is bound to a numeric address. Register our exact Host.
+        server.identity.setPrimary("http", "127.0.0.1", port);
+        server.identity.remove("http", "localhost", port);
         this.server = server;
         this.listeningPort = port;
         for (const win of this.getWindows()) {
@@ -741,7 +745,7 @@ class ZenMcpServiceImpl {
       const tab = this.getTab(name.slice(5));
       value = {
         instanceId: this.instanceId,
-        windowId: this.windowId(tab.ownerGlobal),
+        windowId: this.windowId(tab.ownerGlobal ?? tab.documentGlobal),
         tabId: this.tabId(tab),
         title: tab.label,
         discarded: tab.hasAttribute("pending"),

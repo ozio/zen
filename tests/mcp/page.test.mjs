@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 
 const repo = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -143,7 +144,7 @@ function documentFixture() {
       textContent: attributes.text || "",
       children: [],
       ownerDocument: doc,
-      ownerGlobal: win,
+      documentGlobal: win,
       isConnected: true,
       disabled: false,
       hidden: false,
@@ -1002,4 +1003,43 @@ test("console document identity uses Gecko message.innerWindowID and does not gu
   resource.message.innerWindowID = 51;
   assert.equal(consoleRecord(resource).documentId, "51");
   assert.equal(consoleRecord(resource).frameId, null);
+});
+
+
+test("browser JavaScript uses a system sandbox despite chrome CSP and releases it after async evaluation", async () => {
+  const saved = Object.fromEntries(["Services", "Components", "Cu", "Cr", "Cc", "IOUtils", "PathUtils"].map(name => [name, globalThis[name]]));
+  const principal = { system: true };
+  const win = { document: { nodePrincipal: { isSystemPrincipal: true } }, setTimeout, clearTimeout,
+    eval() { throw new Error("call to eval() blocked by CSP"); } };
+  let released = 0;
+  globalThis.Services = { ...Services, testValue: 42, scriptSecurityManager: { getSystemPrincipal: () => principal } };
+  globalThis.Cc = {}; globalThis.IOUtils = {}; globalThis.PathUtils = {};
+  globalThis.Components = { results: {}, utils: {
+    Sandbox(actualPrincipal, options) {
+      assert.equal(actualPrincipal, principal);
+      assert.equal(options.sandboxPrototype, win);
+      assert.equal(options.wantXrays, false);
+      return Object.create(win);
+    },
+    evalInSandbox(source, sandbox) { return vm.runInNewContext(source, sandbox); },
+    nukeSandbox() { released++; },
+  } };
+  globalThis.Cu = Components.utils; globalThis.Cr = Components.results;
+  try {
+    const service = serviceFixture();service.getWindow = id => { assert.equal(id, "window");return win; };
+    const provider = new ZenMcpPageTools(service, { devtools: { cleanup() {}, destroy() {} } });
+    const result = await provider.execute("zen_javascript", {
+      instanceId: "epoch-1", scope: "browser", windowId: "window",
+      source: "(async()=>{await new Promise(r=>setTimeout(r,1));window.synthetic=Services.testValue;return {system:document.nodePrincipal.isSystemPrincipal,value:window.synthetic}})()",
+    }, { id: "client" });
+    assert.deepEqual(result.value, { system: true, value: 42 });
+    assert.equal(win.synthetic, 42);
+    assert.equal(released, 1);
+    const failed = await provider.execute("zen_javascript", { instanceId: "epoch-1", scope: "browser", windowId: "window", source: "throw new Error('synthetic failure')" }, { id: "client" });
+    assert.equal(failed.exception, "synthetic failure");assert.equal(released, 2);
+  } finally {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete globalThis[name]; else globalThis[name] = value;
+    }
+  }
 });
