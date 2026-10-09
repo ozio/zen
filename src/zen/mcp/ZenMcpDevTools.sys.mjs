@@ -38,7 +38,7 @@ export function consoleRecord(resource) {
       resource.resourceId ??
         message.timeStamp ??
         message.timestamp ??
-        Date.now(),
+        Date.now()
     ),
     resourceType: resource.resourceType,
     level:
@@ -51,8 +51,8 @@ export function consoleRecord(resource) {
     arguments: boundedValue(
       (message.arguments || [])
         .slice(0, 100)
-        .map((argument) => argument?.getGrip?.() ?? argument),
-      { maxDepth: 5, maxEntries: 100, maxChars: 10000 },
+        .map(argument => argument?.getGrip?.() ?? argument),
+      { maxDepth: 5, maxEntries: 100, maxChars: 10000 }
     ).value,
     filename: message.filename || message.sourceName || null,
     line: message.lineNumber ?? null,
@@ -70,7 +70,7 @@ export function networkRecord(resource) {
     url: String(resource.url || resource.request?.url || "").slice(0, 16384),
     method: String(resource.method || resource.request?.method || "").slice(
       0,
-      64,
+      64
     ),
     urlTruncated:
       String(resource.url || resource.request?.url || "").length > 16384,
@@ -105,7 +105,7 @@ export class ZenMcpDevTools {
     requireValue(
       tab.linkedPanel && !tab.hasAttribute("pending"),
       "tab_unloaded",
-      "The tab is unloaded; select or navigate it explicitly before attaching DevTools",
+      "The tab is unloaded; select or navigate it explicitly before attaching DevTools"
     );
     const key = `${client.id}:${tabId}`;
     let entry = this.entries.get(key);
@@ -135,7 +135,7 @@ export class ZenMcpDevTools {
           await this.#destroyCommands(entry);
           throw new McpToolError(
             "client_disconnected",
-            "The client or target disconnected during DevTools attachment",
+            "The client or target disconnected during DevTools attachment"
           );
         }
         commands.descriptorFront.doNotAttachThreadActor = true;
@@ -144,10 +144,10 @@ export class ZenMcpDevTools {
           await this.#destroyCommands(entry);
           throw new McpToolError(
             "client_disconnected",
-            "The client or target disconnected during DevTools attachment",
+            "The client or target disconnected during DevTools attachment"
           );
         }
-        entry.onAvailable = (resources) => {
+        entry.onAvailable = resources => {
           if (entry.closed) {
             return;
           }
@@ -191,7 +191,7 @@ export class ZenMcpDevTools {
             }
           }
         };
-        entry.onUpdated = (updates) => {
+        entry.onUpdated = updates => {
           if (entry.closed || !entry.networkWatching) {
             return;
           }
@@ -201,7 +201,7 @@ export class ZenMcpDevTools {
             if (old) {
               Object.assign(
                 old,
-                networkRecord({ ...resource, ...update, actor: old.actorId }),
+                networkRecord({ ...resource, ...update, actor: old.actorId })
               );
               this.service.notify("network", {
                 clientId: entry.clientId,
@@ -223,7 +223,7 @@ export class ZenMcpDevTools {
     requireValue(
       !entry.closed,
       "client_disconnected",
-      "The client or target disconnected",
+      "The client or target disconnected"
     );
     return entry;
   }
@@ -234,7 +234,7 @@ export class ZenMcpDevTools {
     requireValue(
       frame.currentWindowGlobal?.innerWindowId === expectedDocumentId,
       "stale_document",
-      "The frame navigated while DevTools was attaching; inspect it again",
+      "The frame navigated while DevTools was attaching; inspect it again"
     );
     const command = entry.commands.targetCommand;
     const frameTargets = command.getAllTargets([command.TYPES.FRAME]);
@@ -250,7 +250,7 @@ export class ZenMcpDevTools {
       }
       selectedTargetFront =
         frameTargets.find(
-          (item) => String(item.browsingContextID) === String(ancestor.id),
+          item => String(item.browsingContextID) === String(ancestor.id)
         ) || (ancestor === frame.top ? command.targetFront : null);
       if (selectedTargetFront) {
         break;
@@ -259,7 +259,7 @@ export class ZenMcpDevTools {
     requireValue(
       selectedTargetFront,
       "target_unavailable",
-      "DevTools has no target for this frame yet",
+      "DevTools has no target for this frame yet"
     );
     const expression = `(async () => { const result = await (0, eval)(${JSON.stringify(source)}); return JSON.stringify((${boundedValue.toString()})(result)); })()`;
     const response = await entry.commands.scriptCommand.execute(expression, {
@@ -274,7 +274,7 @@ export class ZenMcpDevTools {
         response.exceptionMessage?.getGrip?.() ??
           response.exceptionMessage ??
           response.exception?.getGrip?.() ??
-          response.exception,
+          response.exception
       ).value;
       for (const front of [response.exception, response.exceptionMessage]) {
         if (typeof front?.release === "function") {
@@ -299,14 +299,14 @@ export class ZenMcpDevTools {
     requireValue(
       typeof result === "string",
       "evaluation_failed",
-      "DevTools did not return the serialized evaluation result",
+      "DevTools did not return the serialized evaluation result"
     );
     try {
       return JSON.parse(result);
     } catch {
       throw new McpToolError(
         "evaluation_failed",
-        "DevTools returned an invalid evaluation result",
+        "DevTools returned an invalid evaluation result"
       );
     }
   }
@@ -321,7 +321,7 @@ export class ZenMcpDevTools {
       entry.console.length = 0;
     }
     const items = args.level
-      ? entry.console.filter((item) => item.level === args.level)
+      ? entry.console.filter(item => item.level === args.level)
       : entry.console;
     return {
       tabId: args.tabId,
@@ -350,15 +350,15 @@ export class ZenMcpDevTools {
       requireValue(
         request,
         "missing_request",
-        "The request was not captured by this client or was evicted",
+        "The request was not captured by this client or was evicted"
       );
       const maxChars = args.maxChars ?? 100000;
       requireValue(
         Number.isInteger(maxChars) && maxChars >= 1 && maxChars <= 1000000,
         "invalid_limit",
-        "maxChars must be from 1 to 1000000",
+        "maxChars must be from 1 to 1000000"
       );
-      const get = (type) =>
+      const get = type =>
         entry.commands.client.request({ to: request.actorId, type });
       const [requestHeaders, responseHeaders] = await Promise.all([
         get("getRequestHeaders"),
@@ -367,12 +367,12 @@ export class ZenMcpDevTools {
       const sent = await this.#headers(
         entry,
         requestHeaders.headers || [],
-        maxChars,
+        maxChars
       );
       const received = await this.#headers(
         entry,
         responseHeaders.headers || [],
-        maxChars,
+        maxChars
       );
       const details = {
         ...this.#publicRequest(request),
@@ -389,7 +389,7 @@ export class ZenMcpDevTools {
         details.requestBody = await this.#text(
           entry,
           post.postData?.text,
-          maxChars,
+          maxChars
         );
         details.requestBodyDiscarded = post.postDataDiscarded === true;
         details.requestBodyTruncated =
@@ -397,7 +397,7 @@ export class ZenMcpDevTools {
         details.responseBody = await this.#text(
           entry,
           response.content?.text,
-          maxChars,
+          maxChars
         );
         details.responseBodyDiscarded = response.contentDiscarded === true;
         details.responseEncoding = response.content?.encoding || null;
@@ -413,17 +413,18 @@ export class ZenMcpDevTools {
       retainedLimit: MAX_RECORDS,
       ...(args.action === "read" || args.action === undefined
         ? paginate(
-            [...entry.network.values()].map((value) =>
-              this.#publicRequest(value),
+            [...entry.network.values()].map(value =>
+              this.#publicRequest(value)
             ),
-            args,
+            args
           )
         : { count: entry.network.size }),
     };
   }
 
   #publicRequest(request) {
-    const { actorId, ...result } = request;
+    const result = { ...request };
+    delete result.actorId;
     return result;
   }
 
@@ -478,7 +479,7 @@ export class ZenMcpDevTools {
           onAvailable: entry.onAvailable,
           onUpdated: entry.onUpdated,
           ignoreExistingResources: true,
-        },
+        }
       );
       if (kind === "network" && entry.commands.watcherFront) {
         const network =
@@ -491,7 +492,7 @@ export class ZenMcpDevTools {
       requireValue(
         !entry.closed,
         "client_disconnected",
-        "The client or target disconnected during resource attachment",
+        "The client or target disconnected during resource attachment"
       );
     } catch (error) {
       entry[property] = false;
@@ -505,7 +506,7 @@ export class ZenMcpDevTools {
     if (entry?.commands && entry[`${kind}Watching`]) {
       entry.commands.resourceCommand.unwatchResources(
         kind === "console" ? CONSOLE_TYPES : NETWORK_TYPES,
-        { onAvailable: entry.onAvailable },
+        { onAvailable: entry.onAvailable }
       );
       entry[`${kind}Watching`] = false;
       if (kind === "console") {
@@ -533,7 +534,8 @@ export class ZenMcpDevTools {
 
   async #dispose(entry) {
     if (entry.closed) {
-      return entry.destroyPromise;
+      await entry.destroyPromise;
+      return;
     }
     entry.closed = true;
     this.entries.delete(entry.key);
@@ -569,15 +571,15 @@ export class ZenMcpDevTools {
   cleanup(clientId) {
     return Promise.all(
       [...this.entries.values()]
-        .filter((entry) => entry.clientId === clientId)
-        .map((entry) => this.#dispose(entry)),
+        .filter(entry => entry.clientId === clientId)
+        .map(entry => this.#dispose(entry))
     );
   }
 
   destroy() {
     this.closed = true;
     return Promise.all(
-      [...this.entries.values()].map((entry) => this.#dispose(entry)),
+      [...this.entries.values()].map(entry => this.#dispose(entry))
     );
   }
 }

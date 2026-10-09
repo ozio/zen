@@ -124,7 +124,7 @@ export function validateSchema(value, schema, path = "arguments") {
   const types = Array.isArray(schema.type) ? schema.type : [schema.type];
   if (
     schema.type &&
-    !types.some((type) => {
+    !types.some(type => {
       switch (type) {
         case "object":
           return isObject(value);
@@ -160,10 +160,14 @@ export function validateSchema(value, schema, path = "arguments") {
       }
     }
   }
+  validateCollectionAndScalar(value, schema, path);
+}
+
+function validateCollectionAndScalar(value, schema, path) {
   if (Array.isArray(value)) {
     if (
       schema.uniqueItems &&
-      new Set(value.map((item) => JSON.stringify(item))).size !== value.length
+      new Set(value.map(item => JSON.stringify(item))).size !== value.length
     ) {
       invalid(`${path} contains duplicate items`);
     }
@@ -174,7 +178,7 @@ export function validateSchema(value, schema, path = "arguments") {
       invalid(`${path} has too few items`);
     }
     if (schema.items) {
-      value.forEach((item) => validateSchema(item, schema.items, `${path}[]`));
+      value.forEach(item => validateSchema(item, schema.items, `${path}[]`));
     }
   }
   if (typeof value === "string") {
@@ -206,7 +210,7 @@ export function decodeHeader(value) {
     try {
       const raw = atob(value.slice(9, -2));
       return new TextDecoder("utf-8", { fatal: true }).decode(
-        Uint8Array.from(raw, (c) => c.charCodeAt(0)),
+        Uint8Array.from(raw, c => c.charCodeAt(0))
       );
     } catch {
       throw new McpProtocolError(-32020, "Malformed MCP header encoding");
@@ -278,7 +282,7 @@ export class ZenMcpProtocol {
           {
             supported: MCP_VERSIONS,
             requested: requested ?? headerVersion,
-          },
+          }
         );
       }
       if (requested === MCP_MODERN_VERSION) {
@@ -419,36 +423,7 @@ export class ZenMcpProtocol {
         if (!context.modern) {
           throw new McpProtocolError(-32601, "Use resources/subscribe", 404);
         }
-        const requested = params.notifications;
-        if (!isObject(requested)) {
-          invalid("notifications is required");
-        }
-        const filter = {};
-        for (const key of ["toolsListChanged", "resourcesListChanged"]) {
-          if (
-            requested[key] !== undefined &&
-            typeof requested[key] !== "boolean"
-          ) {
-            invalid(`${key} must be a boolean`);
-          }
-          if (requested[key]) {
-            filter[key] = true;
-          }
-        }
-        if (requested.resourceSubscriptions !== undefined) {
-          if (
-            !Array.isArray(requested.resourceSubscriptions) ||
-            requested.resourceSubscriptions.length > 100
-          ) {
-            invalid("Invalid resourceSubscriptions");
-          }
-          for (const uri of requested.resourceSubscriptions) {
-            this.service.assertResource(uri, client);
-          }
-          filter.resourceSubscriptions = [
-            ...new Set(requested.resourceSubscriptions),
-          ];
-        }
+        const filter = this.subscriptionFilter(params, client);
         return { stream: { context, id, filter } };
       }
       default:
@@ -457,6 +432,37 @@ export class ZenMcpProtocol {
     return {
       body: { jsonrpc: "2.0", id, result: this.complete(result, context) },
     };
+  }
+
+  subscriptionFilter(params, client) {
+    const requested = params.notifications;
+    if (!isObject(requested)) {
+      invalid("notifications is required");
+    }
+    const filter = {};
+    for (const key of ["toolsListChanged", "resourcesListChanged"]) {
+      if (requested[key] !== undefined && typeof requested[key] !== "boolean") {
+        invalid(`${key} must be a boolean`);
+      }
+      if (requested[key]) {
+        filter[key] = true;
+      }
+    }
+    if (requested.resourceSubscriptions !== undefined) {
+      if (
+        !Array.isArray(requested.resourceSubscriptions) ||
+        requested.resourceSubscriptions.length > 100
+      ) {
+        invalid("Invalid resourceSubscriptions");
+      }
+      for (const uri of requested.resourceSubscriptions) {
+        this.service.assertResource(uri, client);
+      }
+      filter.resourceSubscriptions = [
+        ...new Set(requested.resourceSubscriptions),
+      ];
+    }
+    return filter;
   }
 
   list(items, key, params) {
@@ -476,7 +482,7 @@ export class ZenMcpProtocol {
   }
 
   async call(params, context, id, signal) {
-    const tool = this.service.tools.find((item) => item.name === params.name);
+    const tool = this.service.tools.find(item => item.name === params.name);
     if (!tool) {
       invalid("Unknown tool");
     }
@@ -506,7 +512,7 @@ export class ZenMcpProtocol {
           tool.name,
           args,
           context.client,
-          controller.signal,
+          controller.signal
         );
         if (value?.__mcpResult) {
           const { content, structuredContent, isError } = value;
@@ -574,7 +580,7 @@ export class ZenMcpProtocol {
   openStream(spec, write, close) {
     if (
       [...this.streams].filter(
-        (item) => item.context.client.id === spec.context.client.id,
+        item => item.context.client.id === spec.context.client.id
       ).length >= 8
     ) {
       throw new McpProtocolError(-32000, "Too many subscription streams", 429);
@@ -613,7 +619,7 @@ export class ZenMcpProtocol {
     stream.close();
     if (
       ![...this.streams].some(
-        (item) => item.context.client.id === stream.context.client.id,
+        item => item.context.client.id === stream.context.client.id
       )
     ) {
       this.service.cleanup(stream.context.client.id);
@@ -693,7 +699,7 @@ export class ZenMcpProtocol {
     if (context.version !== "2025-03-26") {
       throw new McpProtocolError(
         -32600,
-        "Batches are only supported in 2025-03-26",
+        "Batches are only supported in 2025-03-26"
       );
     }
     const body = [];
@@ -714,8 +720,8 @@ export class ZenMcpProtocol {
 
   maybeCleanup(clientId) {
     if (
-      ![...this.streams].some((item) => item.context.client.id === clientId) &&
-      ![...this.sessions.values()].some((item) => item.clientId === clientId)
+      ![...this.streams].some(item => item.context.client.id === clientId) &&
+      ![...this.sessions.values()].some(item => item.clientId === clientId)
     ) {
       this.service.cleanup(clientId);
     }
@@ -745,7 +751,7 @@ export class ZenMcpProtocol {
     for (const [id, session] of this.sessions) {
       if (
         session.lastUsed < cutoff &&
-        ![...this.streams].some((item) => item.context.session === session)
+        ![...this.streams].some(item => item.context.session === session)
       ) {
         this.sessions.delete(id);
         this.maybeCleanup(session.clientId);
@@ -755,8 +761,8 @@ export class ZenMcpProtocol {
 
   destroy() {
     const ids = new Set([
-      ...[...this.sessions.values()].map((item) => item.clientId),
-      ...[...this.streams].map((item) => item.context.client.id),
+      ...[...this.sessions.values()].map(item => item.clientId),
+      ...[...this.streams].map(item => item.context.client.id),
       ...this.service.clientIds(),
     ]);
     for (const id of ids) {

@@ -56,50 +56,47 @@ export class ZenMcpChild extends JSWindowActorChild {
       requireValue(
         typeof clientId === "string" && typeof requestId === "string",
         "invalid_client",
-        "An identified parent request is required",
+        "An identified parent request is required"
       );
       requireValue(
         !this.#requests.has(requestKey),
         "duplicate_request",
-        "Request identifier is already in use",
+        "Request identifier is already in use"
       );
       this.#requests.set(requestKey, controller);
       requireValue(
         this.manager.isCurrentGlobal && !this.manager.isClosed,
         "stale_document",
-        "The actor's document is no longer current; inspect the tab",
+        "The actor's document is no longer current; inspect the tab"
       );
       if (args.documentId !== undefined) {
         requireValue(
           args.documentId === documentIdentity(this.contentWindow),
           "stale_document",
-          "The document changed; inspect it again",
+          "The document changed; inspect it again"
         );
       }
       const value = await this.#query(
         command,
         args,
         clientId,
-        controller.signal,
+        controller.signal
       );
       return { ok: true, value };
     } catch (error) {
+      let code = "page_operation_failed";
+      let description =
+        "The page operation failed; inspect its current state before retrying";
+      if (error instanceof McpToolError) {
+        code = error.code;
+        description = error.message;
+      } else if (controller.signal.aborted) {
+        code = "cancelled";
+        description = "The request was cancelled";
+      }
       return {
         ok: false,
-        error: {
-          code:
-            error instanceof McpToolError
-              ? error.code
-              : controller.signal.aborted
-                ? "cancelled"
-                : "page_operation_failed",
-          message:
-            error instanceof McpToolError
-              ? error.message
-              : controller.signal.aborted
-                ? "The request was cancelled"
-                : "The page operation failed; inspect its current state before retrying",
-        },
+        error: { code, message: description },
       };
     } finally {
       this.#requests.delete(requestKey);
@@ -145,7 +142,7 @@ export class ZenMcpChild extends JSWindowActorChild {
           this.#snapshots,
           clientId,
           targetId,
-          args,
+          args
         );
         return {
           ...this.#identity(),
@@ -159,7 +156,7 @@ export class ZenMcpChild extends JSWindowActorChild {
       default:
         throw new McpToolError(
           "unknown_page_command",
-          "The page command is not supported",
+          "The page command is not supported"
         );
     }
   }
@@ -169,7 +166,7 @@ export class ZenMcpChild extends JSWindowActorChild {
     requireValue(
       Number.isInteger(maxChars) && maxChars >= 1 && maxChars <= 1000000,
       "invalid_limit",
-      "maxChars must be from 1 to 1000000",
+      "maxChars must be from 1 to 1000000"
     );
     const doc = this.contentWindow.document;
     const selected = args.selector
@@ -242,17 +239,17 @@ export class ZenMcpChild extends JSWindowActorChild {
     requireValue(
       Number.isInteger(timeoutMs) && timeoutMs >= 0 && timeoutMs <= 60000,
       "invalid_timeout",
-      "timeoutMs must be from 0 to 60000",
+      "timeoutMs must be from 0 to 60000"
     );
     requireValue(
       ["present", "visible", "hidden", "absent", "ready"].includes(state),
       "invalid_state",
-      "Unknown wait state",
+      "Unknown wait state"
     );
     requireValue(
       state === "ready" || typeof args.selector === "string",
       "missing_selector",
-      "selector is required for this wait state",
+      "selector is required for this wait state"
     );
     const deadline = Date.now() + timeoutMs;
     while (true) {
@@ -260,7 +257,7 @@ export class ZenMcpChild extends JSWindowActorChild {
       requireValue(
         this.manager.isCurrentGlobal && !this.manager.isClosed,
         "stale_document",
-        "The document changed while waiting; inspect the tab",
+        "The document changed while waiting; inspect the tab"
       );
       let matched;
       if (state === "ready") {
@@ -268,7 +265,7 @@ export class ZenMcpChild extends JSWindowActorChild {
           args.readyState === undefined ||
             ["interactive", "complete"].includes(args.readyState),
           "invalid_state",
-          "readyState must be interactive or complete",
+          "readyState must be interactive or complete"
         );
         matched =
           args.readyState === "interactive"
@@ -278,22 +275,27 @@ export class ZenMcpChild extends JSWindowActorChild {
         const inventory = scanElements(
           this.contentWindow.document,
           args.selector,
-          true,
+          true
         );
         const visible = inventory.elements.some(visibleElement);
-        matched =
-          state === "present"
-            ? inventory.elements.length > 0
-            : state === "visible"
-              ? visible
-              : state === "hidden"
-                ? !visible
-                : inventory.elements.length === 0;
+        switch (state) {
+          case "present":
+            matched = !!inventory.elements.length;
+            break;
+          case "visible":
+            matched = visible;
+            break;
+          case "hidden":
+            matched = !visible;
+            break;
+          default:
+            matched = !inventory.elements.length;
+        }
         requireValue(
           !inventory.scanTruncated ||
             (["present", "visible"].includes(state) && matched),
           "scan_limit",
-          "The document exceeds the scan limit; use a more specific document or selector",
+          "The document exceeds the scan limit; use a more specific document or selector"
         );
       }
       if (matched) {
@@ -307,7 +309,7 @@ export class ZenMcpChild extends JSWindowActorChild {
                 this.#snapshots,
                 clientId,
                 String(this.browsingContext.id),
-                { ...args, includeHidden: state === "present" },
+                { ...args, includeHidden: state === "present" }
               )
             : {}),
         };
@@ -315,7 +317,7 @@ export class ZenMcpChild extends JSWindowActorChild {
       requireValue(
         Date.now() < deadline,
         "wait_timeout",
-        "The condition did not become true before timeout; inspect the page",
+        "The condition did not become true before timeout; inspect the page"
       );
       await new Promise((resolve, reject) => {
         const aborted = () => {
@@ -327,7 +329,7 @@ export class ZenMcpChild extends JSWindowActorChild {
             signal.removeEventListener("abort", aborted);
             resolve();
           },
-          Math.min(100, Math.max(0, deadline - Date.now())),
+          Math.min(100, Math.max(0, deadline - Date.now()))
         );
         signal.addEventListener("abort", aborted, { once: true });
       });
@@ -339,12 +341,12 @@ export class ZenMcpChild extends JSWindowActorChild {
     requireValue(
       ["list", "get", "set", "remove", "clear"].includes(action),
       "invalid_action",
-      "Unknown storage action",
+      "Unknown storage action"
     );
     requireValue(
       ["local", "session", "indexedDB"].includes(area),
       "invalid_area",
-      "area must be local, session or indexedDB",
+      "area must be local, session or indexedDB"
     );
     if (area === "indexedDB") {
       return this.#indexedDB(args, signal);
@@ -362,8 +364,8 @@ export class ZenMcpChild extends JSWindowActorChild {
       return {
         ...result,
         ...paginate(
-          keys.map((item) => ({ key: item, value: storage.getItem(item) })),
-          args,
+          keys.map(item => ({ key: item, value: storage.getItem(item) })),
+          args
         ),
       };
     }
@@ -371,7 +373,7 @@ export class ZenMcpChild extends JSWindowActorChild {
       requireValue(
         typeof key === "string",
         "invalid_key",
-        "key must be a string",
+        "key must be a string"
       );
     }
     if (action === "get") {
@@ -381,7 +383,7 @@ export class ZenMcpChild extends JSWindowActorChild {
       requireValue(
         typeof value === "string",
         "invalid_value",
-        "Web Storage values must be strings",
+        "Web Storage values must be strings"
       );
       storage.setItem(key, value);
       return { ...result, key, value: storage.getItem(key) };
@@ -406,14 +408,14 @@ export class ZenMcpChild extends JSWindowActorChild {
       requireValue(
         args.action === "list",
         "missing_database",
-        "database and store are required for this IndexedDB operation",
+        "database and store are required for this IndexedDB operation"
       );
       return { ...identity, ...paginate(databases, args) };
     }
     requireValue(
-      databases.some((database) => database.name === args.database),
+      databases.some(database => database.name === args.database),
       "missing_database",
-      "The database does not exist in this frame's origin",
+      "The database does not exist in this frame's origin"
     );
     const database = await new Promise((resolve, reject) => {
       const request = factory.open(args.database);
@@ -451,13 +453,13 @@ export class ZenMcpChild extends JSWindowActorChild {
       requireValue(
         this.manager.isCurrentGlobal && !this.manager.isClosed,
         "stale_document",
-        "The document changed during the storage request",
+        "The document changed during the storage request"
       );
       if (!args.store) {
         requireValue(
           args.action === "list",
           "missing_store",
-          "store is required for this IndexedDB operation",
+          "store is required for this IndexedDB operation"
         );
         return {
           ...identity,
@@ -469,19 +471,19 @@ export class ZenMcpChild extends JSWindowActorChild {
       requireValue(
         database.objectStoreNames.contains(args.store),
         "missing_store",
-        "The object store does not exist",
+        "The object store does not exist"
       );
       const writable = ["set", "remove", "clear"].includes(args.action);
       const transaction = database.transaction(
         args.store,
-        writable ? "readwrite" : "readonly",
+        writable ? "readwrite" : "readonly"
       );
       const store = transaction.objectStore(args.store);
       const done = new Promise((resolve, reject) => {
         transaction.oncomplete = resolve;
         transaction.onabort = transaction.onerror = () =>
           reject(
-            new McpToolError("storage_failed", "IndexedDB transaction failed"),
+            new McpToolError("storage_failed", "IndexedDB transaction failed")
           );
       });
       // Prevent an unhandled rejection before the request's promise settles.
@@ -505,7 +507,7 @@ export class ZenMcpChild extends JSWindowActorChild {
             let advanced = false;
             cursorRequest.onerror = () =>
               reject(
-                new McpToolError("storage_failed", "IndexedDB cursor failed"),
+                new McpToolError("storage_failed", "IndexedDB cursor failed")
               );
             cursorRequest.onsuccess = () => {
               const cursor = cursorRequest.result;
@@ -542,7 +544,7 @@ export class ZenMcpChild extends JSWindowActorChild {
           requireValue(
             args.key !== undefined,
             "invalid_key",
-            "key is required",
+            "key is required"
           );
           request =
             args.action === "get"
@@ -552,7 +554,7 @@ export class ZenMcpChild extends JSWindowActorChild {
           requireValue(
             args.value !== undefined,
             "invalid_value",
-            "value is required",
+            "value is required"
           );
           request =
             args.key === undefined

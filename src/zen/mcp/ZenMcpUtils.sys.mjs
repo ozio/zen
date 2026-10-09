@@ -25,7 +25,7 @@ export function makeTool(
   description,
   properties = {},
   required = [],
-  options = {},
+  options = {}
 ) {
   const identity =
     name === "zen_browser_state" ? {} : { instanceId: schema.string };
@@ -79,7 +79,7 @@ export function paginate(items, { cursor, limit = 100 } = {}) {
   requireValue(
     Number.isInteger(limit) && limit > 0 && limit <= 500,
     "invalid_limit",
-    "limit must be an integer from 1 to 500",
+    "limit must be an integer from 1 to 500"
   );
   const offset = cursor === undefined ? 0 : Number(cursor);
   requireValue(
@@ -87,7 +87,7 @@ export function paginate(items, { cursor, limit = 100 } = {}) {
       offset >= 0 &&
       (cursor === undefined || String(offset) === cursor),
     "invalid_cursor",
-    "cursor must come from a previous list result",
+    "cursor must come from a previous list result"
   );
   return {
     items: items.slice(offset, offset + limit),
@@ -114,7 +114,7 @@ export class SnapshotStore {
   create(clientId, targetId, documentId, data) {
     this.prune();
     const owned = [...this.snapshots.entries()].filter(
-      ([, value]) => value.clientId === clientId,
+      ([, value]) => value.clientId === clientId
     );
     while (owned.length >= this.maxPerClient) {
       this.snapshots.delete(owned.shift()[0]);
@@ -135,18 +135,18 @@ export class SnapshotStore {
     requireValue(
       value && value.expiresAt > this.now(),
       "stale_snapshot",
-      "Snapshot is missing, expired or already consumed; inspect the target again",
+      "Snapshot is missing, expired or already consumed; inspect the target again"
     );
     requireValue(
       value.clientId === clientId && value.targetId === targetId,
       "wrong_snapshot_target",
-      "Snapshot belongs to another client or target",
+      "Snapshot belongs to another client or target"
     );
     this.snapshots.delete(snapshotId);
     requireValue(
       value.documentId === documentId,
       "stale_document",
-      "The document changed; inspect it again",
+      "The document changed; inspect it again"
     );
     return value.data;
   }

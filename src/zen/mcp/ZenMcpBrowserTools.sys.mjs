@@ -161,9 +161,9 @@ function describeOutput(tool, properties) {
 
 function string(value, field, allowEmpty = false) {
   requireValue(
-    typeof value === "string" && (allowEmpty || value.trim().length > 0),
+    typeof value === "string" && (allowEmpty || !!value.trim().length),
     "invalid_argument",
-    `${field} must be a ${allowEmpty ? "" : "non-empty "}string`,
+    `${field} must be a ${allowEmpty ? "" : "non-empty "}string`
   );
   return value;
 }
@@ -172,7 +172,7 @@ function integer(value, field, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
   requireValue(
     Number.isSafeInteger(value) && value >= minimum && value <= maximum,
     "invalid_argument",
-    `${field} must be an integer from ${minimum} to ${maximum}`,
+    `${field} must be an integer from ${minimum} to ${maximum}`
   );
   return value;
 }
@@ -181,7 +181,7 @@ function boolean(value, field) {
   requireValue(
     typeof value === "boolean",
     "invalid_argument",
-    `${field} must be boolean`,
+    `${field} must be boolean`
   );
   return value;
 }
@@ -200,14 +200,14 @@ export class ZenMcpBrowserTools {
         "Identify this Zen instance/build and enumerate ready non-private windows and counts. No target is inferred from focus.",
         {},
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_windows_list",
         "List ready non-private browser windows, their bounds and explicit selected tab/Space IDs.",
         page,
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_window",
@@ -221,7 +221,7 @@ export class ZenMcpBrowserTools {
             "minimize",
             "maximize",
             "restore",
-            "reopen",
+            "reopen"
           ),
           ...targetWindow,
           closedId: index,
@@ -231,7 +231,7 @@ export class ZenMcpBrowserTools {
           height: { type: "integer", minimum: 100 },
           synced: schema.boolean,
         },
-        ["action", "windowId"],
+        ["action", "windowId"]
       ),
       makeTool(
         "zen_tabs_list",
@@ -243,7 +243,7 @@ export class ZenMcpBrowserTools {
           ...page,
         },
         ["windowId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_tab",
@@ -257,7 +257,7 @@ export class ZenMcpBrowserTools {
             "mute",
             "discard",
             "close",
-            "reopen",
+            "reopen"
           ),
           tabId: schema.string,
           ...targetWindow,
@@ -272,28 +272,28 @@ export class ZenMcpBrowserTools {
           index,
           closedId: index,
         },
-        ["action"],
+        ["action"]
       ),
       makeTool(
         "zen_closed_tabs_list",
         "List restorable tabs from one explicit regular window. closedId is instance-scoped; full session state/cookies/form data are not returned.",
         { ...targetWindow, ...page },
         ["windowId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_closed_windows_list",
         "List restorable regular windows with closedId and a minimal tab count/title; private sessions are excluded.",
         page,
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_spaces_list",
         "List Zen Spaces and current selection in an explicit window.",
         { ...targetWindow, ...page },
         ["windowId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_space",
@@ -304,7 +304,7 @@ export class ZenMcpBrowserTools {
             "update",
             "switch",
             "remove",
-            "reorder",
+            "reorder"
           ),
           ...targetWindow,
           spaceId: schema.string,
@@ -314,14 +314,14 @@ export class ZenMcpBrowserTools {
           index,
           select: schema.boolean,
         },
-        ["action", "windowId"],
+        ["action", "windowId"]
       ),
       makeTool(
         "zen_containers_list",
         "List public Firefox containers and their exact-host associations.",
         page,
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_container",
@@ -333,7 +333,7 @@ export class ZenMcpBrowserTools {
             "remove",
             "reorder",
             "associate",
-            "unassociate",
+            "unassociate"
           ),
           containerId: index,
           name: schema.string,
@@ -342,14 +342,14 @@ export class ZenMcpBrowserTools {
           index,
           site: schema.string,
         },
-        ["action"],
+        ["action"]
       ),
       makeTool(
         "zen_folders_list",
         "List folders from every Space of an explicit window, including nested folders and their tab IDs.",
         { ...targetWindow, spaceId: schema.string, ...page },
         ["windowId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_folder",
@@ -362,7 +362,7 @@ export class ZenMcpBrowserTools {
             "removeTabs",
             "move",
             "unpack",
-            "remove",
+            "remove"
           ),
           ...targetGroup,
           spaceId: schema.string,
@@ -373,14 +373,14 @@ export class ZenMcpBrowserTools {
           index,
           tabIds,
         },
-        ["action", "windowId"],
+        ["action", "windowId"]
       ),
       makeTool(
         "zen_groups_list",
         "List ordinary tab groups from all Spaces in an explicit window; folders and Split View groups use their separate tools.",
         { ...targetWindow, spaceId: schema.string, ...page },
         ["windowId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_group",
@@ -393,7 +393,7 @@ export class ZenMcpBrowserTools {
             "removeTabs",
             "move",
             "ungroup",
-            "remove",
+            "remove"
           ),
           ...targetGroup,
           tabIds,
@@ -402,14 +402,14 @@ export class ZenMcpBrowserTools {
           collapsed: schema.boolean,
           index,
         },
-        ["action", "windowId"],
+        ["action", "windowId"]
       ),
       makeTool(
         "zen_splits_list",
         "List Split Views and their layout/tab IDs in an explicit window without loading tabs.",
         { ...targetWindow, ...page },
         ["windowId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_split",
@@ -420,7 +420,7 @@ export class ZenMcpBrowserTools {
             "update",
             "select",
             "remove",
-            "removeTab",
+            "removeTab"
           ),
           ...targetGroup,
           tabIds,
@@ -429,14 +429,14 @@ export class ZenMcpBrowserTools {
           select: schema.boolean,
           selectedTabId: schema.string,
         },
-        ["action", "windowId"],
+        ["action", "windowId"]
       ),
       makeTool(
         "zen_media_list",
         "Read playback metadata/controllers from loaded tabs in one explicit window; unloaded tabs remain unloaded.",
         { ...targetWindow, ...page },
         ["windowId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_media",
@@ -452,15 +452,15 @@ export class ZenMcpBrowserTools {
             "mute",
             "unmute",
             "pipOpen",
-            "pipClose",
+            "pipClose"
           ),
           tabId: schema.string,
           positionSeconds: { type: "number", minimum: 0 },
         },
-        ["action", "tabId"],
+        ["action", "tabId"]
       ),
       ...this.data.getTools(),
-    ].map((tool) => {
+    ].map(tool => {
       const outputs = {
         zen_browser_state: {
           kind: schema.string,
@@ -566,7 +566,7 @@ export class ZenMcpBrowserTools {
     requireValue(
       !signal?.aborted,
       "cancelled",
-      "The request was cancelled before the operation",
+      "The request was cancelled before the operation"
     );
     if (this.data.owns(name)) {
       return this.data.execute(name, args, client, signal);
@@ -595,7 +595,7 @@ export class ZenMcpBrowserTools {
     requireValue(
       handlers[name],
       "unknown_tool",
-      `Unknown native tool: ${name}`,
+      `Unknown native tool: ${name}`
     );
     return { instanceId: this.service.instanceId, ...(await handlers[name]()) };
   }
@@ -605,7 +605,7 @@ export class ZenMcpBrowserTools {
     requireValue(
       win && !win.closed && this.service.getWindows().includes(win),
       "unknown_window",
-      "Window is closed, private or belongs to another instance",
+      "Window is closed, private or belongs to another instance"
     );
     return win;
   }
@@ -621,18 +621,18 @@ export class ZenMcpBrowserTools {
         (!win || owner === win) &&
         this.service.listTabs(owner).includes(tab),
       "unknown_tab",
-      "Tab is closed, private, from another window or belongs to another instance",
+      "Tab is closed, private, from another window or belongs to another instance"
     );
     return tab;
   }
 
   tabs(ids, win) {
     requireValue(
-      Array.isArray(ids) && ids.length > 0 && new Set(ids).size === ids.length,
+      Array.isArray(ids) && !!ids.length && new Set(ids).size === ids.length,
       "invalid_argument",
-      "tabIds must be a non-empty array of unique explicit IDs",
+      "tabIds must be a non-empty array of unique explicit IDs"
     );
-    return ids.map((id) => this.tab(id, win));
+    return ids.map(id => this.tab(id, win));
   }
 
   tabState(tab) {
@@ -703,16 +703,16 @@ export class ZenMcpBrowserTools {
       requireValue(
         !signal?.aborted,
         "cancelled",
-        "The request was cancelled; inspect state before issuing another action",
+        "The request was cancelled; inspect state before issuing another action"
       );
       requireValue(Date.now() < end, "state_timeout", message);
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await new Promise(resolve => setTimeout(resolve, 25));
     }
   }
 
   windowsList(args) {
     const slice = paginate(this.service.getWindows(), args);
-    return { ...slice, items: slice.items.map((win) => this.windowState(win)) };
+    return { ...slice, items: slice.items.map(win => this.windowState(win)) };
   }
 
   async windowAction(args, signal) {
@@ -726,12 +726,12 @@ export class ZenMcpBrowserTools {
         () => created.closed || this.service.getWindows().includes(created),
         signal,
         "Window opened but its Zen startup did not finish; inspect windows_list",
-        30000,
+        30000
       );
       requireValue(
         !created.closed && this.service.getWindows().includes(created),
         "window_unavailable",
-        "The new window closed or is not a regular browser window",
+        "The new window closed or is not a regular browser window"
       );
       this.changed(created);
       return { window: this.windowState(created) };
@@ -739,26 +739,26 @@ export class ZenMcpBrowserTools {
     if (args.action === "reopen") {
       const closedId = integer(args.closedId, "closedId");
       requireValue(
-        this.closedWindows().some((value) => value.closedId === closedId),
+        this.closedWindows().some(value => value.closedId === closedId),
         "unknown_closed_window",
-        "Closed window is no longer restorable",
+        "Closed window is no longer restorable"
       );
       const restored = lazy.SessionStore.undoCloseById(closedId, false, win);
       requireValue(
         restored,
         "restore_failed",
-        "SessionStore did not restore the window",
+        "SessionStore did not restore the window"
       );
       await this.waitFor(
         () => restored.closed || this.service.getWindows().includes(restored),
         signal,
         "Restored window has not finished Zen startup; inspect windows_list",
-        30000,
+        30000
       );
       requireValue(
         !restored.closed && this.service.getWindows().includes(restored),
         "window_unavailable",
-        "Restored window is not available",
+        "Restored window is not available"
       );
       this.changed(restored);
       return { window: this.windowState(restored) };
@@ -782,20 +782,20 @@ export class ZenMcpBrowserTools {
             args.width !== undefined ||
             args.height !== undefined,
           "invalid_argument",
-          "Specify a position or size",
+          "Specify a position or size"
         );
         if (args.width !== undefined || args.height !== undefined) {
           const width = integer(
             args.width ?? win.outerWidth,
             "width",
             100,
-            32768,
+            32768
           );
           const height = integer(
             args.height ?? win.outerHeight,
             "height",
             100,
-            32768,
+            32768
           );
           win.resizeTo(width, height);
         }
@@ -827,18 +827,17 @@ export class ZenMcpBrowserTools {
     const items = this.service
       .listTabs(win)
       .filter(
-        (tab) =>
+        tab =>
           (args.spaceId === undefined ||
             tab.getAttribute("zen-workspace-id") === args.spaceId) &&
           (args.containerId === undefined ||
-            Number(tab.getAttribute("usercontextid") || 0) ===
-              args.containerId),
+            Number(tab.getAttribute("usercontextid") || 0) === args.containerId)
       );
     const slice = paginate(items, args);
     return {
       windowId: args.windowId,
       ...slice,
-      items: slice.items.map((tab) => this.tabState(tab)),
+      items: slice.items.map(tab => this.tabState(tab)),
     };
   }
 
@@ -848,7 +847,7 @@ export class ZenMcpBrowserTools {
     requireValue(
       space,
       "unknown_space",
-      "Space no longer exists in this window",
+      "Space no longer exists in this window"
     );
     return space;
   }
@@ -859,7 +858,7 @@ export class ZenMcpBrowserTools {
       requireValue(
         lazy.ContextualIdentityService.getPublicIdentityFromId(id),
         "unknown_container",
-        "Public container does not exist",
+        "Public container does not exist"
       );
     }
   }
@@ -908,22 +907,22 @@ export class ZenMcpBrowserTools {
       const win = this.window(args.windowId);
       const closedId = integer(args.closedId, "closedId");
       requireValue(
-        this.closedTabs(win).some((value) => value.closedId === closedId),
+        this.closedTabs(win).some(value => value.closedId === closedId),
         "unknown_closed_tab",
-        "Closed tab is no longer restorable in this window",
+        "Closed tab is no longer restorable in this window"
       );
       const tab = lazy.SessionStore.undoCloseById(closedId, false, win);
       requireValue(
         tab && this.service.listTabs(win).includes(tab),
         "restore_failed",
-        "SessionStore did not restore the tab",
+        "SessionStore did not restore the tab"
       );
       this.changed(win, tab);
       return { tab: this.tabState(tab) };
     }
     let tab = this.tab(
       args.tabId,
-      args.windowId === undefined ? undefined : this.window(args.windowId),
+      args.windowId === undefined ? undefined : this.window(args.windowId)
     );
     let win = tab.ownerGlobal ?? tab.documentGlobal;
     switch (args.action) {
@@ -936,7 +935,7 @@ export class ZenMcpBrowserTools {
             args.spaceId !== undefined ||
             args.index !== undefined,
           "invalid_argument",
-          "Specify destinationWindowId, spaceId or index",
+          "Specify destinationWindowId, spaceId or index"
         );
         const destination =
           args.destinationWindowId === undefined
@@ -949,7 +948,7 @@ export class ZenMcpBrowserTools {
           requireValue(
             !tab.hasAttribute("zen-essential"),
             "essential_has_no_space",
-            "Essentials are shared across Spaces; change pin mode before moving into a Space",
+            "Essentials are shared across Spaces; change pin mode before moving into a Space"
           );
         }
         const position =
@@ -959,7 +958,7 @@ export class ZenMcpBrowserTools {
                 args.index,
                 "index",
                 0,
-                this.service.listTabs(destination).length,
+                this.service.listTabs(destination).length
               );
         if (destination !== win) {
           const oldWin = win;
@@ -971,7 +970,7 @@ export class ZenMcpBrowserTools {
           requireValue(
             adopted,
             "tab_move_failed",
-            "Zen refused to adopt this tab; inspect source and destination",
+            "Zen refused to adopt this tab; inspect source and destination"
           );
           tab = adopted;
           win = destination;
@@ -989,29 +988,7 @@ export class ZenMcpBrowserTools {
         break;
       }
       case "pin": {
-        requireValue(
-          ["normal", "pinned", "essential"].includes(args.mode),
-          "invalid_argument",
-          "mode must be normal, pinned or essential",
-        );
-        const pins = win.gZenPinnedTabManager;
-        if (args.mode === "essential") {
-          requireValue(
-            pins.addToEssentials(tab),
-            "essential_rejected",
-            "Zen rejected this Essential for the current container; select its Space first",
-          );
-        } else {
-          if (tab.hasAttribute("zen-essential")) {
-            pins.removeEssentials(tab, args.mode === "normal");
-          }
-          if (args.mode === "pinned") {
-            win.gBrowser.pinTab(tab);
-          }
-          if (args.mode === "normal") {
-            win.gBrowser.unpinTab(tab);
-          }
-        }
+        this.setPinMode(win, tab, args.mode);
         break;
       }
       case "mute":
@@ -1024,7 +1001,7 @@ export class ZenMcpBrowserTools {
           requireValue(
             win.gBrowser.discardBrowser(tab, true),
             "tab_not_discardable",
-            "Zen cannot discard this tab (selected or active media/sharing); inspect its state",
+            "Zen cannot discard this tab (selected or active media/sharing); inspect its state"
           );
         }
         break;
@@ -1034,7 +1011,7 @@ export class ZenMcpBrowserTools {
         await this.waitFor(
           () => tab.closing || !this.service.listTabs(win).includes(tab),
           signal,
-          "Close is waiting for a page unload check; inspect the tab's dialogs",
+          "Close is waiting for a page unload check; inspect the tab's dialogs"
         );
         this.changed(win);
         return {
@@ -1049,6 +1026,32 @@ export class ZenMcpBrowserTools {
     }
     this.changed(win, tab);
     return { tab: this.tabState(tab) };
+  }
+
+  setPinMode(win, tab, mode) {
+    requireValue(
+      ["normal", "pinned", "essential"].includes(mode),
+      "invalid_argument",
+      "mode must be normal, pinned or essential"
+    );
+    const pins = win.gZenPinnedTabManager;
+    if (mode === "essential") {
+      requireValue(
+        pins.addToEssentials(tab),
+        "essential_rejected",
+        "Zen rejected this Essential for the current container; select its Space first"
+      );
+    } else {
+      if (tab.hasAttribute("zen-essential")) {
+        pins.removeEssentials(tab, mode === "normal");
+      }
+      if (mode === "pinned") {
+        win.gBrowser.pinTab(tab);
+      }
+      if (mode === "normal") {
+        win.gBrowser.unpinTab(tab);
+      }
+    }
   }
 
   closedTabs(win) {
@@ -1066,7 +1069,7 @@ export class ZenMcpBrowserTools {
     return {
       windowId: args.windowId,
       ...slice,
-      items: slice.items.map((value) => {
+      items: slice.items.map(value => {
         const state = value.state;
         const entry =
           state?.entries?.[(state.index || state.entries.length) - 1];
@@ -1083,7 +1086,7 @@ export class ZenMcpBrowserTools {
 
   closedWindows() {
     return lazy.SessionStore.getClosedWindowData().filter(
-      (value) => !value.isPrivate,
+      value => !value.isPrivate
     );
   }
 
@@ -1091,7 +1094,7 @@ export class ZenMcpBrowserTools {
     const slice = paginate(this.closedWindows(), args);
     return {
       ...slice,
-      items: slice.items.map((value) => ({
+      items: slice.items.map(value => ({
         closedId: value.closedId,
         title: value.title || "",
         tabCount: value.tabs?.length || 0,
@@ -1119,7 +1122,7 @@ export class ZenMcpBrowserTools {
       windowId: args.windowId,
       activeSpaceId: win.gZenWorkspaces.activeWorkspace,
       ...slice,
-      items: slice.items.map((space) => this.spaceState(win, space)),
+      items: slice.items.map(space => this.spaceState(win, space)),
     };
   }
 
@@ -1129,7 +1132,7 @@ export class ZenMcpBrowserTools {
     requireValue(
       manager.workspaceEnabled && manager.currentWindowIsSyncing,
       "spaces_unavailable",
-      "This window does not support synchronized Spaces",
+      "This window does not support synchronized Spaces"
     );
     let space;
     if (args.action === "create") {
@@ -1140,19 +1143,19 @@ export class ZenMcpBrowserTools {
         name,
         args.icon,
         true,
-        containerId,
+        containerId
       );
       requireValue(
         space,
         "space_creation_failed",
-        "Zen did not create the Space",
+        "Zen did not create the Space"
       );
       await this.waitFor(
         () =>
           manager.getWorkspaceFromId(space.uuid) &&
           manager.workspaceElement(space.uuid),
         signal,
-        "Space metadata was created but its UI has not appeared; inspect spaces_list",
+        "Space metadata was created but its UI has not appeared; inspect spaces_list"
       );
       if (args.select === true) {
         await manager.changeWorkspaceWithID(space.uuid);
@@ -1166,7 +1169,7 @@ export class ZenMcpBrowserTools {
               args.icon !== undefined ||
               args.containerId !== undefined,
             "invalid_argument",
-            "Specify a Space field to update",
+            "Specify a Space field to update"
           );
           const changed = { ...space };
           if (args.name !== undefined) {
@@ -1191,7 +1194,7 @@ export class ZenMcpBrowserTools {
               );
             },
             signal,
-            "Space update has not propagated; inspect spaces_list",
+            "Space update has not propagated; inspect spaces_list"
           );
           break;
         }
@@ -1202,7 +1205,7 @@ export class ZenMcpBrowserTools {
           requireValue(
             manager.getWorkspaces().length > 1,
             "last_space",
-            "The last Space cannot be removed",
+            "The last Space cannot be removed"
           );
           await manager.removeWorkspace(space.uuid);
           this.changed(win, null, { spaceId: space.uuid });
@@ -1214,7 +1217,7 @@ export class ZenMcpBrowserTools {
         case "reorder":
           await manager.reorderWorkspace(
             space.uuid,
-            integer(args.index, "index", 0, manager.getWorkspaces().length - 1),
+            integer(args.index, "index", 0, manager.getWorkspaces().length - 1)
           );
           break;
         default:
@@ -1237,18 +1240,18 @@ export class ZenMcpBrowserTools {
       color: value.color,
       sites: api
         .getSiteAssociations(value.userContextId)
-        .map((item) => item.site),
+        .map(item => item.site),
     };
   }
 
   containersList(args) {
     const slice = paginate(
       lazy.ContextualIdentityService.getPublicIdentities(),
-      args,
+      args
     );
     return {
       ...slice,
-      items: slice.items.map((value) => this.containerState(value)),
+      items: slice.items.map(value => this.containerState(value)),
     };
   }
 
@@ -1265,7 +1268,7 @@ export class ZenMcpBrowserTools {
       value = api.create(
         string(args.name, "name"),
         args.icon ?? "fingerprint",
-        args.color ?? "blue",
+        args.color ?? "blue"
       );
     } else {
       const id = integer(args.containerId, "containerId", 1);
@@ -1273,7 +1276,7 @@ export class ZenMcpBrowserTools {
       requireValue(
         value,
         "unknown_container",
-        "Public container no longer exists",
+        "Public container no longer exists"
       );
       switch (args.action) {
         case "update":
@@ -1282,7 +1285,7 @@ export class ZenMcpBrowserTools {
               args.icon !== undefined ||
               args.color !== undefined,
             "invalid_argument",
-            "Specify a container field to update",
+            "Specify a container field to update"
           );
           api.update(
             id,
@@ -1290,7 +1293,7 @@ export class ZenMcpBrowserTools {
               ? api.getUserContextLabel(id)
               : string(args.name, "name"),
             args.icon ?? value.icon,
-            args.color ?? value.color,
+            args.color ?? value.color
           );
           break;
         case "remove":
@@ -1302,7 +1305,7 @@ export class ZenMcpBrowserTools {
                 await this.waitFor(
                   () => win.closed || !this.service.listTabs(win).includes(tab),
                   signal,
-                  "A container tab is still waiting for an unload check; inspect its dialogs before removing the container",
+                  "A container tab is still waiting for an unload check; inspect its dialogs before removing the container"
                 );
                 this.changed(win);
               }
@@ -1318,8 +1321,8 @@ export class ZenMcpBrowserTools {
               args.index,
               "index",
               0,
-              api.getPublicIdentities().length - 1,
-            ),
+              api.getPublicIdentities().length - 1
+            )
           );
           break;
         case "associate":
@@ -1332,7 +1335,7 @@ export class ZenMcpBrowserTools {
     this.service.notify("profile", { kind: "containers" });
     return {
       container: this.containerState(
-        api.getPublicIdentityFromId(value.userContextId),
+        api.getPublicIdentityFromId(value.userContextId)
       ),
     };
   }
@@ -1343,7 +1346,7 @@ export class ZenMcpBrowserTools {
 
   group(id, win, kind) {
     const value = this.allGroups(win).find(
-      (group) => group.id === string(id, "groupId"),
+      group => group.id === string(id, "groupId")
     );
     requireValue(
       value &&
@@ -1351,20 +1354,22 @@ export class ZenMcpBrowserTools {
           ? value.isZenFolder
           : !value.isZenFolder && !value.hasAttribute("split-view-group")),
       "unknown_group",
-      `The ${kind} is closed or belongs to another window`,
+      `The ${kind} is closed or belongs to another window`
     );
     return value;
   }
 
   groupState(win, group) {
+    let kind = "group";
+    if (group.isZenFolder) {
+      kind = "folder";
+    } else if (group.hasAttribute("split-view-group")) {
+      kind = "split";
+    }
     return {
       windowId: this.service.windowId(win),
       groupId: group.id,
-      kind: group.isZenFolder
-        ? "folder"
-        : group.hasAttribute("split-view-group")
-          ? "split"
-          : "group",
+      kind,
       name: group.label,
       color: group.color,
       collapsed: !!group.collapsed,
@@ -1375,14 +1380,14 @@ export class ZenMcpBrowserTools {
       parentGroupId: group.group?.id || null,
       icon: group.isZenFolder ? group.iconURL || null : null,
       tabIds: Array.from(group.tabs)
-        .filter((tab) => this.service.listTabs(win).includes(tab))
-        .map((tab) => this.service.tabId(tab)),
+        .filter(tab => this.service.listTabs(win).includes(tab))
+        .map(tab => this.service.tabId(tab)),
       childGroupIds: group.isZenFolder
         ? group.allItems
             .filter(
-              (value) => value.isZenFolder || win.gBrowser.isTabGroup(value),
+              value => value.isZenFolder || win.gBrowser.isTabGroup(value)
             )
-            .map((value) => value.id)
+            .map(value => value.id)
         : [],
     };
   }
@@ -1390,25 +1395,25 @@ export class ZenMcpBrowserTools {
   groupsList(args, kind) {
     const win = this.window(args.windowId);
     const items = this.allGroups(win).filter(
-      (value) =>
+      value =>
         (kind === "folder"
           ? value.isZenFolder
           : !value.isZenFolder && !value.hasAttribute("split-view-group")) &&
         (args.spaceId === undefined ||
           (value.getAttribute("zen-workspace-id") ||
-            value.tabs[0]?.getAttribute("zen-workspace-id")) === args.spaceId),
+            value.tabs[0]?.getAttribute("zen-workspace-id")) === args.spaceId)
     );
     const slice = paginate(items, args);
     return {
       windowId: args.windowId,
       ...slice,
-      items: slice.items.map((group) => this.groupState(win, group)),
+      items: slice.items.map(group => this.groupState(win, group)),
     };
   }
 
   dispatchGroupUpdate(win, group) {
     group.dispatchEvent(
-      new win.CustomEvent("TabGroupUpdate", { bubbles: true }),
+      new win.CustomEvent("TabGroupUpdate", { bubbles: true })
     );
     win.gBrowser.tabContainer._invalidateCachedTabs();
     this.changed(win, null, { groupId: group.id });
@@ -1421,21 +1426,19 @@ export class ZenMcpBrowserTools {
     requireValue(
       folder !== parent && !folder.allItemsRecursive.includes(parent),
       "folder_cycle",
-      "A folder cannot be moved inside itself or its descendants",
+      "A folder cannot be moved inside itself or its descendants"
     );
-    const relativeDepth = (group) =>
+    const relativeDepth = group =>
       1 +
       Math.max(
         0,
-        ...group.allItems
-          .filter((value) => value.isZenFolder)
-          .map(relativeDepth),
+        ...group.allItems.filter(value => value.isZenFolder).map(relativeDepth)
       );
     const maxDepth = Services.prefs.getIntPref("zen.folders.max-subfolders", 5);
     requireValue(
       parent.level + relativeDepth(folder) < maxDepth,
       "folder_depth",
-      "Zen's maximum nested folder depth would be exceeded",
+      "Zen's maximum nested folder depth would be exceeded"
     );
   }
 
@@ -1444,69 +1447,74 @@ export class ZenMcpBrowserTools {
     requireValue(
       win.gZenFolders.canDropElement(
         folder,
-        parent.groupContainer.lastElementChild,
+        parent.groupContainer.lastElementChild
       ),
       "folder_depth",
-      "Zen rejected this folder nesting depth",
+      "Zen rejected this folder nesting depth"
     );
     parent.groupContainer.appendChild(folder);
     win.gBrowser.tabContainer._invalidateCachedTabs();
     this.dispatchGroupUpdate(win, folder);
   }
 
+  async createFolder(win, args, signal) {
+    const space = this.validateSpace(win, args.spaceId);
+    const tabs = args.tabIds === undefined ? [] : this.tabs(args.tabIds, win);
+    requireValue(
+      tabs.every(
+        tab =>
+          !tab.hasAttribute("zen-essential") &&
+          tab.getAttribute("zen-workspace-id") === space.uuid
+      ),
+      "folder_target_mismatch",
+      "Folder tabs must belong to the requested Space and cannot be Essentials"
+    );
+    const parent = args.parentGroupId
+      ? this.group(args.parentGroupId, win, "folder")
+      : null;
+    requireValue(
+      !parent || parent.getAttribute("zen-workspace-id") === space.uuid,
+      "folder_target_mismatch",
+      "Parent folder must be in the requested Space"
+    );
+    if (parent) {
+      requireValue(
+        parent.level + 1 <
+          Services.prefs.getIntPref("zen.folders.max-subfolders", 5),
+        "folder_depth",
+        "Zen's maximum nested folder depth would be exceeded"
+      );
+    }
+    const folder = win.gZenFolders.createFolder(tabs, {
+      label: string(args.name, "name"),
+      workspaceId: space.uuid,
+      collapsed: args.collapsed ?? false,
+      renameFolder: false,
+    });
+    requireValue(
+      folder,
+      "folder_creation_failed",
+      "Zen did not create the folder"
+    );
+    if (parent) {
+      this.nestFolder(win, folder, parent);
+    }
+    if (args.icon !== undefined) {
+      win.gZenFolders.setFolderUserIcon(folder, args.icon || null);
+    }
+    await this.waitFor(
+      () => this.allGroups(win).includes(folder),
+      signal,
+      "Folder was created but not registered; inspect folders_list"
+    );
+    return folder;
+  }
+
   async folderAction(args, signal) {
     const win = this.window(args.windowId);
     let folder;
     if (args.action === "create") {
-      const space = this.validateSpace(win, args.spaceId);
-      const tabs = args.tabIds === undefined ? [] : this.tabs(args.tabIds, win);
-      requireValue(
-        tabs.every(
-          (tab) =>
-            !tab.hasAttribute("zen-essential") &&
-            tab.getAttribute("zen-workspace-id") === space.uuid,
-        ),
-        "folder_target_mismatch",
-        "Folder tabs must belong to the requested Space and cannot be Essentials",
-      );
-      const parent = args.parentGroupId
-        ? this.group(args.parentGroupId, win, "folder")
-        : null;
-      requireValue(
-        !parent || parent.getAttribute("zen-workspace-id") === space.uuid,
-        "folder_target_mismatch",
-        "Parent folder must be in the requested Space",
-      );
-      if (parent) {
-        requireValue(
-          parent.level + 1 <
-            Services.prefs.getIntPref("zen.folders.max-subfolders", 5),
-          "folder_depth",
-          "Zen's maximum nested folder depth would be exceeded",
-        );
-      }
-      folder = win.gZenFolders.createFolder(tabs, {
-        label: string(args.name, "name"),
-        workspaceId: space.uuid,
-        collapsed: args.collapsed ?? false,
-        renameFolder: false,
-      });
-      requireValue(
-        folder,
-        "folder_creation_failed",
-        "Zen did not create the folder",
-      );
-      if (parent) {
-        this.nestFolder(win, folder, parent);
-      }
-      if (args.icon !== undefined) {
-        win.gZenFolders.setFolderUserIcon(folder, args.icon || null);
-      }
-      await this.waitFor(
-        () => this.allGroups(win).includes(folder),
-        signal,
-        "Folder was created but not registered; inspect folders_list",
-      );
+      folder = await this.createFolder(win, args, signal);
     } else {
       folder = this.group(args.groupId, win, "folder");
       switch (args.action) {
@@ -1516,7 +1524,7 @@ export class ZenMcpBrowserTools {
               args.icon !== undefined ||
               args.collapsed !== undefined,
             "invalid_argument",
-            "Specify a folder field to update",
+            "Specify a folder field to update"
           );
           if (args.name !== undefined) {
             folder.label = string(args.name, "name", true);
@@ -1533,12 +1541,12 @@ export class ZenMcpBrowserTools {
           const spaceId = folder.getAttribute("zen-workspace-id");
           requireValue(
             tabs.every(
-              (tab) =>
+              tab =>
                 tab.getAttribute("zen-workspace-id") === spaceId &&
-                !tab.hasAttribute("zen-essential"),
+                !tab.hasAttribute("zen-essential")
             ),
             "folder_target_mismatch",
-            "Tabs must belong to the folder's Space and cannot be Essentials",
+            "Tabs must belong to the folder's Space and cannot be Essentials"
           );
           for (const tab of tabs) {
             win.gBrowser.pinTab(tab);
@@ -1549,9 +1557,9 @@ export class ZenMcpBrowserTools {
         case "removeTabs": {
           const tabs = this.tabs(args.tabIds, win);
           requireValue(
-            tabs.every((tab) => folder.tabs.includes(tab)),
+            tabs.every(tab => folder.tabs.includes(tab)),
             "folder_target_mismatch",
-            "Every tab must be in this folder",
+            "Every tab must be in this folder"
           );
           for (const tab of tabs) {
             win.gBrowser.ungroupTab(tab);
@@ -1564,7 +1572,7 @@ export class ZenMcpBrowserTools {
               args.parentGroupId !== undefined ||
               args.index !== undefined,
             "invalid_argument",
-            "Specify spaceId, parentGroupId or index",
+            "Specify spaceId, parentGroupId or index"
           );
           const spaceId =
             args.spaceId ?? folder.getAttribute("zen-workspace-id");
@@ -1576,7 +1584,7 @@ export class ZenMcpBrowserTools {
           requireValue(
             !parent || parent.getAttribute("zen-workspace-id") === spaceId,
             "folder_target_mismatch",
-            "Parent folder must be in the destination Space",
+            "Parent folder must be in the destination Space"
           );
           if (args.spaceId !== undefined) {
             win.gZenFolders.changeFolderToSpace(folder, spaceId, {
@@ -1589,7 +1597,7 @@ export class ZenMcpBrowserTools {
             } else {
               const root =
                 win.gZenWorkspaces.workspaceElement(
-                  spaceId,
+                  spaceId
                 ).pinnedTabsContainer;
               root.insertBefore(folder, root.lastChild);
             }
@@ -1604,7 +1612,7 @@ export class ZenMcpBrowserTools {
                 args.index,
                 "index",
                 0,
-                this.service.listTabs(win).length,
+                this.service.listTabs(win).length
               ),
             });
           }
@@ -1641,13 +1649,13 @@ export class ZenMcpBrowserTools {
       const space = tabs[0].getAttribute("zen-workspace-id");
       requireValue(
         tabs.every(
-          (tab) =>
+          tab =>
             tab.getAttribute("zen-workspace-id") === space &&
             !tab.hasAttribute("zen-essential") &&
-            !tab.splitView,
+            !tab.splitView
         ),
         "group_target_mismatch",
-        "Group tabs must share a Space and cannot be Essentials or Split View members",
+        "Group tabs must share a Space and cannot be Essentials or Split View members"
       );
       group = win.gBrowser.addTabGroup(tabs, {
         label: args.name ?? "",
@@ -1657,7 +1665,7 @@ export class ZenMcpBrowserTools {
       requireValue(
         group,
         "group_creation_failed",
-        "Zen did not create the group",
+        "Zen did not create the group"
       );
       group.setAttribute("zen-workspace-id", space);
       if (args.collapsed !== undefined) {
@@ -1672,7 +1680,7 @@ export class ZenMcpBrowserTools {
               args.color !== undefined ||
               args.collapsed !== undefined,
             "invalid_argument",
-            "Specify a group field to update",
+            "Specify a group field to update"
           );
           if (args.name !== undefined) {
             group.label = string(args.name, "name", true);
@@ -1691,13 +1699,13 @@ export class ZenMcpBrowserTools {
             group.tabs[0]?.getAttribute("zen-workspace-id");
           requireValue(
             tabs.every(
-              (tab) =>
+              tab =>
                 tab.getAttribute("zen-workspace-id") === spaceId &&
                 !tab.hasAttribute("zen-essential") &&
-                !tab.splitView,
+                !tab.splitView
             ),
             "group_target_mismatch",
-            "Tabs must share this group's Space and cannot be Essentials or Split View members",
+            "Tabs must share this group's Space and cannot be Essentials or Split View members"
           );
           group.addTabs(tabs);
           break;
@@ -1705,9 +1713,9 @@ export class ZenMcpBrowserTools {
         case "removeTabs": {
           const tabs = this.tabs(args.tabIds, win);
           requireValue(
-            tabs.every((tab) => group.tabs.includes(tab)),
+            tabs.every(tab => group.tabs.includes(tab)),
             "group_target_mismatch",
-            "Every tab must belong to this group",
+            "Every tab must belong to this group"
           );
           for (const tab of tabs) {
             win.gBrowser.ungroupTab(tab);
@@ -1720,7 +1728,7 @@ export class ZenMcpBrowserTools {
               args.index,
               "index",
               0,
-              this.service.listTabs(win).length,
+              this.service.listTabs(win).length
             ),
           });
           break;
@@ -1744,7 +1752,7 @@ export class ZenMcpBrowserTools {
   }
 
   splitState(win, value) {
-    const node = (item) =>
+    const node = item =>
       item.tab
         ? {
             tabId: this.service.tabId(item.tab),
@@ -1761,7 +1769,7 @@ export class ZenMcpBrowserTools {
       layout: value.gridType,
       selected:
         win.gZenViewSplitter._data[win.gZenViewSplitter.currentView] === value,
-      tabIds: value.tabs.map((tab) => this.service.tabId(tab)),
+      tabIds: value.tabs.map(tab => this.service.tabId(tab)),
       layoutTree: node(value.layoutTree),
     };
   }
@@ -1772,7 +1780,7 @@ export class ZenMcpBrowserTools {
     return {
       windowId: args.windowId,
       ...slice,
-      items: slice.items.map((value) => this.splitState(win, value)),
+      items: slice.items.map(value => this.splitState(win, value)),
     };
   }
 
@@ -1783,7 +1791,7 @@ export class ZenMcpBrowserTools {
     requireValue(
       ["grid", "vsep", "hsep"].includes(layout),
       "invalid_argument",
-      "Unknown Split View layout",
+      "Unknown Split View layout"
     );
     let value;
     if (args.action === "create") {
@@ -1792,19 +1800,19 @@ export class ZenMcpBrowserTools {
       requireValue(
         tabs.length >= 2 && tabs.length <= manager.MAX_TABS,
         "split_tab_count",
-        "Split View requires 2..4 tabs",
+        "Split View requires 2..4 tabs"
       );
       requireValue(
         tabs.every(
-          (tab) =>
+          tab =>
             tab.getAttribute("zen-workspace-id") === space &&
             !tab.hasAttribute("zen-essential") &&
             !tab.hasAttribute("zen-empty-tab") &&
             !tab.hidden &&
-            !tab.splitView,
+            !tab.splitView
         ),
         "split_target_mismatch",
-        "Split tabs must be visible regular tabs in the same Space and not already split",
+        "Split tabs must be visible regular tabs in the same Space and not already split"
       );
       const initialIndex =
         args.selectedTabId === undefined
@@ -1813,28 +1821,28 @@ export class ZenMcpBrowserTools {
       requireValue(
         initialIndex >= 0,
         "split_target_mismatch",
-        "selectedTabId must belong to this Split View",
+        "selectedTabId must belong to this Split View"
       );
       value = manager.splitTabs(
         tabs,
         layout,
         args.select === false ? -1 : initialIndex,
-        { activate: args.select !== false },
+        { activate: args.select !== false }
       );
       requireValue(
         value,
         "split_creation_failed",
-        "Zen refused to split these tabs",
+        "Zen refused to split these tabs"
       );
     } else {
       const groupId = string(args.groupId, "groupId");
       const groupIndex = manager._data.findIndex(
-        (item) => item.groupId === groupId,
+        item => item.groupId === groupId
       );
       requireValue(
         groupIndex >= 0,
         "unknown_split",
-        "Split View no longer exists in this window",
+        "Split View no longer exists in this window"
       );
       value = manager._data[groupIndex];
       switch (args.action) {
@@ -1842,7 +1850,7 @@ export class ZenMcpBrowserTools {
           requireValue(
             args.layout !== undefined,
             "invalid_argument",
-            "Specify layout to update",
+            "Specify layout to update"
           );
           value.gridType = layout;
           value.layoutTree = manager.calculateLayoutTree(value.tabs, layout);
@@ -1858,7 +1866,7 @@ export class ZenMcpBrowserTools {
           requireValue(
             value.tabs.includes(tab),
             "split_target_mismatch",
-            "selectedTabId must belong to this Split View",
+            "selectedTabId must belong to this Split View"
           );
           win.gBrowser.selectedTab = tab;
           manager.activateSplitView(value);
@@ -1869,20 +1877,18 @@ export class ZenMcpBrowserTools {
           this.changed(win, null, { groupId });
           return {
             groupId,
-            removed: !manager._data.some((item) => item.groupId === groupId),
+            removed: !manager._data.some(item => item.groupId === groupId),
           };
         case "removeTab": {
           const tab = this.tab(args.tabId, win);
           requireValue(
             value.tabs.includes(tab),
             "split_target_mismatch",
-            "tabId must belong to this Split View",
+            "tabId must belong to this Split View"
           );
           manager.removeTabFromGroup(tab, groupIndex, { forUnsplit: true });
           this.changed(win, tab, { groupId });
-          const updated = manager._data.find(
-            (item) => item.groupId === groupId,
-          );
+          const updated = manager._data.find(item => item.groupId === groupId);
           return {
             split: updated ? this.splitState(win, updated) : null,
             removed: !updated,
@@ -1936,17 +1942,17 @@ export class ZenMcpBrowserTools {
     const tabs = this.service
       .listTabs(win)
       .filter(
-        (tab) =>
+        tab =>
           tab.linkedPanel &&
           (tab.hasAttribute("soundplaying") ||
             tab.hasAttribute("pictureinpicture") ||
-            tab.linkedBrowser.browsingContext?.mediaController?.isActive),
+            tab.linkedBrowser.browsingContext?.mediaController?.isActive)
       );
     const slice = paginate(tabs, args);
     return {
       windowId: args.windowId,
       ...slice,
-      items: slice.items.map((tab) => this.mediaState(tab)),
+      items: slice.items.map(tab => this.mediaState(tab)),
     };
   }
 
@@ -1956,14 +1962,14 @@ export class ZenMcpBrowserTools {
     requireValue(
       tab.linkedPanel,
       "tab_unloaded",
-      "Media control requires an explicitly loaded tab",
+      "Media control requires an explicitly loaded tab"
     );
     const browser = tab.linkedBrowser;
     if (args.action === "pipOpen") {
       requireValue(
         lazy.PictureInPicture.getEligiblePipVideoCount(browser) > 0,
         "no_pip_video",
-        "Firefox has no eligible video in this tab",
+        "Firefox has no eligible video in this tab"
       );
       if (!tab.hasAttribute("pictureinpicture")) {
         browser.browsingContext.currentWindowGlobal
@@ -1972,15 +1978,14 @@ export class ZenMcpBrowserTools {
         await this.waitFor(
           () => tab.hasAttribute("pictureinpicture"),
           signal,
-          "PiP launcher did not open a player; inspect media state before retrying",
+          "PiP launcher did not open a player; inspect media state before retrying"
         );
       }
     } else if (args.action === "pipClose") {
       const players = Array.from(
-        Services.wm.getEnumerator("Toolkit:PictureInPicture"),
+        Services.wm.getEnumerator("Toolkit:PictureInPicture")
       ).filter(
-        (player) =>
-          lazy.PictureInPicture.weakWinToBrowser.get(player) === browser,
+        player => lazy.PictureInPicture.weakWinToBrowser.get(player) === browser
       );
       for (const player of players) {
         await lazy.PictureInPicture.closePipWindow(player);
@@ -1995,7 +2000,7 @@ export class ZenMcpBrowserTools {
       requireValue(
         controller?.isActive,
         "no_media_controller",
-        "This tab has no active media controller",
+        "This tab has no active media controller"
       );
       const key = {
         play: "play",
@@ -2009,7 +2014,7 @@ export class ZenMcpBrowserTools {
       requireValue(
         controller.supportedKeys.includes(key),
         "media_key_unsupported",
-        "The page does not support this media action",
+        "The page does not support this media action"
       );
       switch (args.action) {
         case "play":
@@ -2031,7 +2036,7 @@ export class ZenMcpBrowserTools {
           requireValue(
             Number.isFinite(args.positionSeconds) && args.positionSeconds >= 0,
             "invalid_argument",
-            "positionSeconds must be a non-negative number",
+            "positionSeconds must be a non-negative number"
           );
           controller.seekTo(args.positionSeconds);
           break;

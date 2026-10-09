@@ -22,8 +22,7 @@ const MAX_SCANNED = 20000;
 
 export function documentIdentity(win) {
   return String(
-    win.windowGlobalChild?.innerWindowId ??
-      win.windowUtils.currentInnerWindowID,
+    win.windowGlobalChild?.innerWindowId ?? win.windowUtils.currentInnerWindowID
   );
 }
 
@@ -67,7 +66,7 @@ export function visibleElement(element) {
   if (nativeMenuVisible(element)) {
     return true;
   }
-  const win = element.ownerGlobal || element.ownerDocument.defaultView;
+  const win = element.ownerGlobal || element.documentGlobal;
   const rect = element.getBoundingClientRect();
   const style = win.getComputedStyle(element);
   return (
@@ -130,10 +129,10 @@ function labelFor(element) {
     .filter(Boolean);
   const labelledText = labelledBy
     .map(
-      (id) =>
+      id =>
         root.getElementById?.(id)?.textContent ||
         doc.getElementById(id)?.textContent ||
-        "",
+        ""
     )
     .join(" ")
     .trim();
@@ -142,7 +141,7 @@ function labelFor(element) {
     labelledText ||
     element.getAttribute("label") ||
     [...(element.labels || [])]
-      .map((label) => label.textContent)
+      .map(label => label.textContent)
       .join(" ")
       .trim() ||
     element.getAttribute("alt") ||
@@ -205,7 +204,13 @@ export function describeElement(element, elementId) {
   return result;
 }
 
-/** Bounded traversal, including open shadow roots; never enters an iframe. */
+/**
+ * Bounded traversal, including open shadow roots; never enters an iframe.
+ *
+ * @param {Document} doc The explicit document to inspect.
+ * @param {string} selector A CSS selector for observed elements.
+ * @param {boolean} [includeHidden=false] Include hidden controls.
+ */
 export function scanElements(doc, selector, includeHidden = false) {
   const roots = [doc];
   const elements = [];
@@ -242,12 +247,12 @@ export function snapshotDocument(
   clientId,
   targetId,
   args = {},
-  chrome = false,
+  chrome = false
 ) {
   const { elements, scanned, scanTruncated } = scanElements(
     win.document,
     args.selector || (chrome ? CHROME_SELECTOR : PAGE_SELECTOR),
-    args.includeHidden === true,
+    args.includeHidden === true
   );
   const page = paginate(elements, args);
   const references = new Map();
@@ -286,36 +291,36 @@ export function takeElement(win, store, clientId, targetId, args) {
   requireValue(
     typeof args.snapshotId === "string" && typeof args.elementId === "string",
     "missing_element",
-    "snapshotId and elementId from a fresh snapshot are required",
+    "snapshotId and elementId from a fresh snapshot are required"
   );
   requireValue(
     typeof args.documentId === "string",
     "missing_document",
-    "documentId from the snapshot is required",
+    "documentId from the snapshot is required"
   );
   const documentId = documentIdentity(win);
   requireValue(
     args.documentId === documentId,
     "stale_document",
-    "The document changed; inspect it again",
+    "The document changed; inspect it again"
   );
   const references = store.take(
     args.snapshotId,
     clientId,
     targetId,
-    documentId,
+    documentId
   );
   const stored = references.get(args.elementId);
   const element = stored?.reference.deref();
   requireValue(
     element?.isConnected && element.ownerDocument === win.document,
     "stale_element",
-    "The element was removed; inspect it again",
+    "The element was removed; inspect it again"
   );
   requireValue(
     stored.fingerprint === elementFingerprint(element),
     "changed_element",
-    "The element changed; inspect it again",
+    "The element changed; inspect it again"
   );
   return element;
 }
@@ -341,57 +346,57 @@ export function validateAction(args) {
   requireValue(
     ACTIONS.includes(args.action),
     "invalid_action",
-    "Unknown element action",
+    "Unknown element action"
   );
   if (args.action === "input") {
     requireValue(
       typeof args.text === "string" && args.text.length <= 1000000,
       "invalid_text",
-      "text must be a string of at most 1000000 characters",
+      "text must be a string of at most 1000000 characters"
     );
   }
   if (args.action === "key") {
     requireValue(
       typeof args.key === "string" &&
-        args.key.length > 0 &&
+        !!args.key.length &&
         args.key.length <= 128,
       "invalid_key",
-      "key must be a character or a DOM key name",
+      "key must be a character or a DOM key name"
     );
     requireValue(
       args.modifiers === undefined ||
         (Array.isArray(args.modifiers) &&
-          args.modifiers.every((key) =>
-            ["shift", "ctrl", "alt", "meta"].includes(key),
+          args.modifiers.every(key =>
+            ["shift", "ctrl", "alt", "meta"].includes(key)
           )),
       "invalid_modifiers",
-      "modifiers may contain shift, ctrl, alt and meta",
+      "modifiers may contain shift, ctrl, alt and meta"
     );
   }
   if (args.action === "select") {
     requireValue(
       Array.isArray(args.values) &&
-        args.values.length > 0 &&
+        !!args.values.length &&
         args.values.length <= 500 &&
-        args.values.every((value) => typeof value === "string"),
+        args.values.every(value => typeof value === "string"),
       "invalid_values",
-      "values must be a nonempty list of option values",
+      "values must be a nonempty list of option values"
     );
   }
   if (args.action === "check") {
     requireValue(
       typeof args.checked === "boolean",
       "invalid_checked",
-      "checked must be a boolean",
+      "checked must be a boolean"
     );
   }
   if (args.action === "scroll") {
     requireValue(
       [args.deltaX ?? 0, args.deltaY ?? 0].every(
-        (value) => Number.isFinite(value) && Math.abs(value) <= 100000,
+        value => Number.isFinite(value) && Math.abs(value) <= 100000
       ),
       "invalid_scroll",
-      "scroll deltas must be finite and no larger than 100000 CSS pixels",
+      "scroll deltas must be finite and no larger than 100000 CSS pixels"
     );
   }
   if (args.action === "upload") {
@@ -399,13 +404,13 @@ export function validateAction(args) {
       Array.isArray(args.paths) &&
         args.paths.length <= 100 &&
         args.paths.every(
-          (path) =>
+          path =>
             typeof path === "string" &&
             /^(\/|[A-Za-z]:[\\/])/.test(path) &&
-            !path.includes("\0"),
+            !path.includes("\0")
         ),
       "invalid_paths",
-      "paths must be absolute file paths (at most 100 files)",
+      "paths must be absolute file paths (at most 100 files)"
     );
   }
 }
@@ -424,7 +429,7 @@ function clickablePoint(win, element) {
   requireValue(
     right > left && bottom > top,
     "not_interactable",
-    "The element is outside the viewport",
+    "The element is outside the viewport"
   );
   const point = { x: (left + right) / 2, y: (top + bottom) / 2 };
   let hit = win.document.elementFromPoint(point.x, point.y);
@@ -438,7 +443,7 @@ function clickablePoint(win, element) {
   requireValue(
     hit === element || element.contains(hit),
     "click_intercepted",
-    "Another element covers this target; inspect it again",
+    "Another element covers this target; inspect it again"
   );
   return point;
 }
@@ -448,11 +453,107 @@ function controlEvent(win, element, type) {
   // dispatch gives form/file controls the native trusted input/change signal.
   win.windowUtils.dispatchDOMEventViaPresShellForTesting(
     element,
-    new win.Event(type, { bubbles: true, composed: type === "input" }),
+    new win.Event(type, { bubbles: true, composed: type === "input" })
   );
 }
 
-/** Uses Gecko's trusted WebDriver event helpers without starting a remote agent. */
+async function performPointerAction(win, element, args, chrome, assertCurrent) {
+  switch (args.action) {
+    case "click":
+      if (
+        chrome &&
+        nativeMenuVisible(element) &&
+        typeof element.doCommand === "function"
+      ) {
+        element.doCommand();
+      } else if (
+        element.namespaceURI ===
+        "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      ) {
+        const point = clickablePoint(win, element);
+        await lazy.event.synthesizeMouseAtPoint(point.x, point.y, {}, win);
+      } else {
+        await lazy.interaction.clickElement(element, false, true);
+      }
+      break;
+    case "double_click":
+    case "context_click":
+    case "hover": {
+      const point = clickablePoint(win, element);
+      if (args.action === "context_click") {
+        for (const type of ["mousedown", "contextmenu", "mouseup"]) {
+          assertCurrent();
+          await lazy.event.synthesizeMouseAtPoint(
+            point.x,
+            point.y,
+            { type, button: 2 },
+            win
+          );
+        }
+      } else if (args.action === "double_click") {
+        await lazy.event.synthesizeMouseAtPoint(
+          point.x,
+          point.y,
+          { clickCount: 1 },
+          win
+        );
+        assertCurrent();
+        await lazy.event.synthesizeMouseAtPoint(
+          point.x,
+          point.y,
+          { clickCount: 2 },
+          win
+        );
+      } else {
+        await lazy.event.synthesizeMouseAtPoint(
+          point.x,
+          point.y,
+          { type: "mousemove" },
+          win
+        );
+      }
+      break;
+    }
+  }
+}
+
+async function uploadFiles(win, element, args, assertCurrent) {
+  requireValue(
+    element.localName === "input" && element.type === "file",
+    "wrong_control",
+    "upload needs an input type=file element"
+  );
+  requireValue(
+    element.multiple || args.paths.length <= 1,
+    "wrong_control",
+    "This input accepts one file"
+  );
+  const files = [];
+  for (const path of args.paths) {
+    try {
+      files.push(await File.createFromFileName(path));
+    } catch {
+      throw new McpToolError(
+        "file_not_found",
+        "An upload path is missing or unreadable"
+      );
+    }
+  }
+  assertCurrent();
+  element.mozSetFileArray(files);
+  controlEvent(win, element, "input");
+  assertCurrent();
+  controlEvent(win, element, "change");
+}
+
+/**
+ * Uses Gecko's trusted WebDriver event helpers without starting a remote agent.
+ *
+ * @param {Window} win The owning document's window.
+ * @param {Element} element A validated, fresh element.
+ * @param {object} args The validated action arguments.
+ * @param {boolean} [chrome=false] Whether native chrome controls are allowed.
+ */
 export async function performAction(win, element, args, chrome = false) {
   validateAction(args);
   const expectedDocumentId = documentIdentity(win);
@@ -462,79 +563,30 @@ export async function performAction(win, element, args, chrome = false) {
       win.document === expectedDocument &&
         documentIdentity(win) === expectedDocumentId,
       "stale_document",
-      "The document changed during the action; inspect the tab before retrying",
+      "The document changed during the action; inspect the tab before retrying"
     );
   assertCurrent();
   requireValue(
     !element.disabled && element.getAttribute("disabled") !== "true",
     "disabled_element",
-    "The element is disabled",
+    "The element is disabled"
   );
   if (!["upload", "close_menu"].includes(args.action)) {
     requireValue(
       visibleElement(element),
       "hidden_element",
-      "The element is hidden",
+      "The element is hidden"
     );
   }
   const userInput = win.windowUtils.setHandlingUserInput(true);
   try {
     switch (args.action) {
       case "click":
-        if (
-          chrome &&
-          nativeMenuVisible(element) &&
-          typeof element.doCommand === "function"
-        ) {
-          element.doCommand();
-        } else if (
-          element.namespaceURI ===
-          "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        ) {
-          const point = clickablePoint(win, element);
-          await lazy.event.synthesizeMouseAtPoint(point.x, point.y, {}, win);
-        } else {
-          await lazy.interaction.clickElement(element, false, true);
-        }
-        break;
       case "double_click":
       case "context_click":
-      case "hover": {
-        const point = clickablePoint(win, element);
-        if (args.action === "context_click") {
-          for (const type of ["mousedown", "contextmenu", "mouseup"]) {
-            assertCurrent();
-            await lazy.event.synthesizeMouseAtPoint(
-              point.x,
-              point.y,
-              { type, button: 2 },
-              win,
-            );
-          }
-        } else if (args.action === "double_click") {
-          await lazy.event.synthesizeMouseAtPoint(
-            point.x,
-            point.y,
-            { clickCount: 1 },
-            win,
-          );
-          assertCurrent();
-          await lazy.event.synthesizeMouseAtPoint(
-            point.x,
-            point.y,
-            { clickCount: 2 },
-            win,
-          );
-        } else {
-          await lazy.event.synthesizeMouseAtPoint(
-            point.x,
-            point.y,
-            { type: "mousemove" },
-            win,
-          );
-        }
+      case "hover":
+        await performPointerAction(win, element, args, chrome, assertCurrent);
         break;
-      }
       case "focus":
         element.focus();
         break;
@@ -542,7 +594,7 @@ export async function performAction(win, element, args, chrome = false) {
         requireValue(
           element.type !== "file",
           "wrong_control",
-          "Use upload for file inputs",
+          "Use upload for file inputs"
         );
         if (args.replace !== false) {
           lazy.interaction.clearElement(element);
@@ -562,12 +614,12 @@ export async function performAction(win, element, args, chrome = false) {
       case "key": {
         element.focus();
         const modifiers = Object.fromEntries(
-          (args.modifiers || []).map((key) => [`${key}Key`, true]),
+          (args.modifiers || []).map(key => [`${key}Key`, true])
         );
         const key = args.key.replace(/^KEY_/, "");
         lazy.event.sendSingleKey(
           { key, printable: [...key].length === 1, ...modifiers },
-          win,
+          win
         );
         break;
       }
@@ -575,22 +627,20 @@ export async function performAction(win, element, args, chrome = false) {
         requireValue(
           element.localName === "select",
           "wrong_control",
-          "select needs a select element",
+          "select needs a select element"
         );
         requireValue(
           element.multiple || args.values.length === 1,
           "wrong_control",
-          "This select accepts one value",
+          "This select accepts one value"
         );
         const options = [...element.options];
         requireValue(
-          args.values.every((value) =>
-            options.some(
-              (option) => option.value === value && !option.disabled,
-            ),
+          args.values.every(value =>
+            options.some(option => option.value === value && !option.disabled)
           ),
           "missing_option",
-          "An option is missing or disabled",
+          "An option is missing or disabled"
         );
         element.focus();
         for (const option of options) {
@@ -605,12 +655,12 @@ export async function performAction(win, element, args, chrome = false) {
         requireValue(
           ["checkbox", "radio"].includes(element.type),
           "wrong_control",
-          "check needs a checkbox or radio input",
+          "check needs a checkbox or radio input"
         );
         requireValue(
           !(element.type === "radio" && !args.checked),
           "wrong_control",
-          "A radio input cannot be unchecked with a click",
+          "A radio input cannot be unchecked with a click"
         );
         if (!!element.checked !== args.checked) {
           await lazy.interaction.clickElement(element, false, true);
@@ -622,7 +672,7 @@ export async function performAction(win, element, args, chrome = false) {
           point.x,
           point.y,
           { deltaX: args.deltaX ?? 0, deltaY: args.deltaY ?? 0, deltaMode: 0 },
-          win,
+          win
         );
         break;
       }
@@ -631,44 +681,18 @@ export async function performAction(win, element, args, chrome = false) {
           element.localName === "form" &&
             typeof element.requestSubmit === "function",
           "wrong_control",
-          "submit needs a form element",
+          "submit needs a form element"
         );
         element.requestSubmit();
         break;
-      case "upload": {
-        requireValue(
-          element.localName === "input" && element.type === "file",
-          "wrong_control",
-          "upload needs an input type=file element",
-        );
-        requireValue(
-          element.multiple || args.paths.length <= 1,
-          "wrong_control",
-          "This input accepts one file",
-        );
-        const files = [];
-        for (const path of args.paths) {
-          try {
-            files.push(await File.createFromFileName(path));
-          } catch {
-            throw new McpToolError(
-              "file_not_found",
-              "An upload path is missing or unreadable",
-            );
-          }
-        }
-        assertCurrent();
-        element.mozSetFileArray(files);
-        controlEvent(win, element, "input");
-        assertCurrent();
-        controlEvent(win, element, "change");
+      case "upload":
+        await uploadFiles(win, element, args, assertCurrent);
         break;
-      }
       case "open_menu":
         requireValue(
           chrome && typeof element.openMenu === "function",
           "wrong_control",
-          "open_menu needs a native menu control",
+          "open_menu needs a native menu control"
         );
         element.openMenu(true);
         break;
@@ -680,7 +704,7 @@ export async function performAction(win, element, args, chrome = false) {
         requireValue(
           chrome && typeof popup?.hidePopup === "function",
           "wrong_control",
-          "close_menu needs a native menu popup",
+          "close_menu needs a native menu popup"
         );
         popup.hidePopup();
         break;
@@ -700,10 +724,18 @@ export async function performAction(win, element, args, chrome = false) {
   };
 }
 
-/** JSON-safe values with explicit loss markers and bounded traversal. */
+/**
+ * JSON-safe values with explicit loss markers and bounded traversal.
+ *
+ * @param {*} input The value to serialize.
+ * @param {object} [options] Traversal bounds.
+ * @param {number} [options.maxDepth=8] Maximum nested depth.
+ * @param {number} [options.maxEntries=1000] Maximum total entries.
+ * @param {number} [options.maxChars=1000000] Maximum text length.
+ */
 export function boundedValue(
   input,
-  { maxDepth = 8, maxEntries = 1000, maxChars = 1000000 } = {},
+  { maxDepth = 8, maxEntries = 1000, maxChars = 1000000 } = {}
 ) {
   const seen = new WeakSet();
   let entries = 0,

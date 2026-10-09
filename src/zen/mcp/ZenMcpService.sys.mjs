@@ -46,12 +46,12 @@ const AUDIT_METHODS = new Set([
 function sha256(value) {
   const bytes = new TextEncoder().encode(value);
   const hash = Cc["@mozilla.org/security/hash;1"].createInstance(
-    Ci.nsICryptoHash,
+    Ci.nsICryptoHash
   );
   hash.init(Ci.nsICryptoHash.SHA256);
   hash.update(bytes, bytes.length);
-  return Array.from(hash.finish(false), (character) =>
-    character.charCodeAt(0).toString(16).padStart(2, "0"),
+  return Array.from(hash.finish(false), character =>
+    character.charCodeAt(0).toString(16).padStart(2, "0")
   ).join("");
 }
 
@@ -60,7 +60,7 @@ function token() {
     Cc["@mozilla.org/security/random-generator;1"]
       .getService(Ci.nsIRandomGenerator)
       .generateRandomBytes(32),
-    (byte) => byte.toString(16).padStart(2, "0"),
+    byte => byte.toString(16).padStart(2, "0")
   ).join("");
 }
 
@@ -88,10 +88,20 @@ function headersFrom(request) {
 function writeUtf8(response, value) {
   const bytes = new TextEncoder().encode(value);
   const output = Cc["@mozilla.org/binaryoutputstream;1"].createInstance(
-    Ci.nsIBinaryOutputStream,
+    Ci.nsIBinaryOutputStream
   );
   output.setOutputStream(response.bodyOutputStream);
   output.writeByteArray(bytes);
+}
+
+function decodeBody(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(
+      Uint8Array.from(bytes)
+    );
+  } catch {
+    throw new McpProtocolError(-32700, "Request body must be UTF-8", 400);
+  }
 }
 
 class ZenMcpServiceImpl {
@@ -152,20 +162,20 @@ class ZenMcpServiceImpl {
               capabilities: schema.strings,
             },
           },
-        },
+        }
       ),
       makeTool(
         "zen_events",
         "Read a bounded change journal after a sequence number. Events contain opaque identifiers only.",
         { after: schema.integer, limit: schema.integer },
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_client_disconnect",
         "Release this client's subscriptions, element handles and DevTools observers. The saved access grant remains valid.",
         {},
-        [],
+        []
       ),
     ];
   }
@@ -177,7 +187,7 @@ class ZenMcpServiceImpl {
 
   async initialize() {
     this.kind = (await IOUtils.exists(
-      PathUtils.join(PathUtils.profileDir, "zen-playground.json"),
+      PathUtils.join(PathUtils.profileDir, "zen-playground.json")
     ))
       ? "playground"
       : "main";
@@ -185,7 +195,7 @@ class ZenMcpServiceImpl {
     this.credentials = new ZenMcpCredentials({
       read: async () =>
         (await IOUtils.exists(file)) ? IOUtils.readJSON(file) : null,
-      write: async (data) => {
+      write: async data => {
         await IOUtils.writeJSON(file, data, {
           tmpPath: `${file}.tmp`,
           flush: true,
@@ -195,7 +205,7 @@ class ZenMcpServiceImpl {
       hash: sha256,
       random: token,
       id: uuid,
-      revoked: (id) => this.protocol?.disconnect(id),
+      revoked: id => this.protocol?.disconnect(id),
     });
     try {
       await this.credentials.load();
@@ -260,7 +270,7 @@ class ZenMcpServiceImpl {
     Services.obs.notifyObservers(
       null,
       "zen-mcp-state-changed",
-      JSON.stringify({ kind, ...(clientId ? { clientId } : {}) }),
+      JSON.stringify({ kind, ...(clientId ? { clientId } : {}) })
     );
   }
 
@@ -282,7 +292,7 @@ class ZenMcpServiceImpl {
     ) {
       throw new McpToolError(
         "invalid_port",
-        "Port must be 0 (default) or an integer from 1024 to 65535",
+        "Port must be 0 (default) or an integer from 1024 to 65535"
       );
     }
     Services.prefs.setIntPref(PORT, port);
@@ -347,7 +357,7 @@ class ZenMcpServiceImpl {
       this.stop();
     } else if (topic === "browser-delayed-startup-finished" && this.server) {
       subject.gZenStartup?.promiseInitialized.then(() =>
-        this.attachWindow(subject),
+        this.attachWindow(subject)
       );
     }
   }
@@ -385,13 +395,13 @@ class ZenMcpServiceImpl {
         ...this.rootTools,
         ...this.browserTools
           .getTools()
-          .filter((tool) => tool.name !== "zen_browser_state"),
+          .filter(tool => tool.name !== "zen_browser_state"),
         ...this.pageTools.getTools(),
       ];
       this.protocol = new ZenMcpProtocol(this, { id: uuid });
       const server = new lazy.HttpServer();
       server.registerPathHandler("/mcp", (request, response) =>
-        this.handleHttp(request, response),
+        this.handleHttp(request, response)
       );
       try {
         // Bind the numeric IPv4 loopback explicitly, without hostname resolution.
@@ -405,7 +415,7 @@ class ZenMcpServiceImpl {
         this.timer.initWithCallback(
           () => this.maintenance(),
           1000,
-          Ci.nsITimer.TYPE_REPEATING_SLACK,
+          Ci.nsITimer.TYPE_REPEATING_SLACK
         );
       } catch {
         this.error = `MCP could not listen on 127.0.0.1:${port}. The port may be occupied; choose another port.`;
@@ -435,7 +445,7 @@ class ZenMcpServiceImpl {
       } catch {}
     }
     this.transports.clear();
-    for (const [win, remove] of this.windowListeners) {
+    for (const remove of this.windowListeners.values()) {
       remove();
     }
     this.windowListeners.clear();
@@ -446,17 +456,17 @@ class ZenMcpServiceImpl {
     const server = this.server;
     this.server = null;
     if (server) {
-      await new Promise((resolve) => server.stop(resolve));
+      await new Promise(resolve => server.stop(resolve));
     }
   }
 
   getWindows() {
     return [...Services.wm.getEnumerator("navigator:browser")].filter(
-      (win) =>
+      win =>
         !win.closed &&
         win.gBrowser &&
         win.gZenStartup?.isReady &&
-        !lazy.PrivateBrowsingUtils.isWindowPrivate(win),
+        !lazy.PrivateBrowsingUtils.isWindowPrivate(win)
     );
   }
 
@@ -483,11 +493,11 @@ class ZenMcpServiceImpl {
   }
 
   getWindow(id) {
-    const win = this.getWindows().find((item) => this.windowId(item) === id);
+    const win = this.getWindows().find(item => this.windowId(item) === id);
     if (!win) {
       throw new McpToolError(
         "closed_window",
-        "Window is closed or belongs to another instance",
+        "Window is closed or belongs to another instance"
       );
     }
     return win;
@@ -496,7 +506,7 @@ class ZenMcpServiceImpl {
   getTab(id) {
     for (const win of this.getWindows()) {
       const tab = this.listTabs(win).find(
-        (item) => this.tabId(item) === id && !item.closing,
+        item => this.tabId(item) === id && !item.closing
       );
       if (tab) {
         return tab;
@@ -504,7 +514,7 @@ class ZenMcpServiceImpl {
     }
     throw new McpToolError(
       "closed_tab",
-      "Tab is closed or belongs to another instance",
+      "Tab is closed or belongs to another instance"
     );
   }
 
@@ -515,7 +525,7 @@ class ZenMcpServiceImpl {
     ) {
       throw new McpToolError(
         "stale_instance",
-        "Read zen_browser_state again: this instance identity has changed",
+        "Read zen_browser_state again: this instance identity has changed"
       );
     }
   }
@@ -533,7 +543,7 @@ class ZenMcpServiceImpl {
         os: Services.appinfo.OS,
         architecture: Services.appinfo.XPCOMABI,
       },
-      windows: this.getWindows().map((win) => {
+      windows: this.getWindows().map(win => {
         const selected = win.gBrowser.selectedTab;
         const context = selected?.linkedPanel
           ? selected.linkedBrowser.browsingContext
@@ -549,7 +559,7 @@ class ZenMcpServiceImpl {
           activeFrameId: context ? String(context.id) : null,
         };
       }),
-      capabilities: this.tools.map((tool) => tool.name),
+      capabilities: this.tools.map(tool => tool.name),
     };
   }
 
@@ -570,7 +580,7 @@ class ZenMcpServiceImpl {
       "TabGroupRemoved",
       "ZenWorkspaceChanged",
     ];
-    const listener = (event) => {
+    const listener = event => {
       const tab = event.target?.localName === "tab" ? event.target : null;
       this.notify("browser", {
         windowId: this.windowId(win),
@@ -578,9 +588,9 @@ class ZenMcpServiceImpl {
         event: event.type,
       });
     };
-    types.forEach((type) => win.addEventListener(type, listener, true));
+    types.forEach(type => win.addEventListener(type, listener, true));
     const progress = {
-      onLocationChange: (browser) => {
+      onLocationChange: browser => {
         const tab = win.gBrowser.getTabForBrowser(browser);
         if (tab && !tab.closing) {
           const context = browser.browsingContext;
@@ -606,7 +616,7 @@ class ZenMcpServiceImpl {
     };
     win.addEventListener("unload", unload, { once: true });
     this.windowListeners.set(win, () => {
-      types.forEach((type) => win.removeEventListener(type, listener, true));
+      types.forEach(type => win.removeEventListener(type, listener, true));
       win.removeEventListener("unload", unload);
       win.gBrowser.removeTabsProgressListener?.(progress);
     });
@@ -670,7 +680,7 @@ class ZenMcpServiceImpl {
   }
 
   resources() {
-    return RESOURCE_NAMES.map((name) => ({
+    return RESOURCE_NAMES.map(name => ({
       uri: this.resourceUri(name),
       name: `zen_${name}`,
       mimeType: "application/json",
@@ -714,7 +724,7 @@ class ZenMcpServiceImpl {
     throw new McpProtocolError(-32002, "Resource not found", 404);
   }
 
-  async readResource(uri, client) {
+  async readResource(uri, _client) {
     const name = this.assertResource(uri);
     let value;
     if (name === "state") {
@@ -751,11 +761,11 @@ class ZenMcpServiceImpl {
       if (after < 0 || limit < 1 || limit > 500) {
         throw new McpToolError(
           "invalid_pagination",
-          "after must be nonnegative and limit from 1 to 500",
+          "after must be nonnegative and limit from 1 to 500"
         );
       }
       const events = this.events
-        .filter((item) => item.sequence > after)
+        .filter(item => item.sequence > after)
         .slice(0, limit);
       return {
         instanceId: this.instanceId,
@@ -771,7 +781,7 @@ class ZenMcpServiceImpl {
     }
     const provider = this.browserTools
       .getTools()
-      .some((tool) => tool.name === name)
+      .some(tool => tool.name === name)
       ? this.browserTools
       : this.pageTools;
     return provider.execute(name, args, client, signal);
@@ -806,7 +816,7 @@ class ZenMcpServiceImpl {
     for (const [clientId, lastUsed] of this.clientActivity) {
       if (
         Date.now() - lastUsed > 30000 &&
-        ![...this.transports].some((item) => item.client.id === clientId)
+        ![...this.transports].some(item => item.client.id === clientId)
       ) {
         this.cleanup(clientId);
       }
@@ -828,8 +838,8 @@ class ZenMcpServiceImpl {
       }
       await IOUtils.writeUTF8(
         file,
-        entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-        { mode: "append" },
+        entries.map(entry => JSON.stringify(entry)).join("\n") + "\n",
+        { mode: "append" }
       );
       await IOUtils.setPermissions(file, 0o600, false);
     } catch {
@@ -883,7 +893,7 @@ class ZenMcpServiceImpl {
         415: "Unsupported Media Type",
         429: "Too Many Requests",
         500: "Internal Server Error",
-      }[status] ?? "Error",
+      }[status] ?? "Error"
     );
     response.setHeader("Cache-Control", "no-store", false);
     response.setHeader("X-Content-Type-Options", "nosniff", false);
@@ -894,7 +904,7 @@ class ZenMcpServiceImpl {
       response.setHeader(
         "Content-Type",
         "application/json; charset=utf-8",
-        false,
+        false
       );
       writeUtf8(response, JSON.stringify(body));
     }
@@ -912,7 +922,7 @@ class ZenMcpServiceImpl {
     try {
       checkEndpoint(headers, this.listeningPort);
       client = this.credentials.authenticate(
-        getHeader(headers, "authorization"),
+        getHeader(headers, "authorization")
       );
       if (!client) {
         this.respond(
@@ -920,15 +930,15 @@ class ZenMcpServiceImpl {
           401,
           errorMessage(
             null,
-            new McpProtocolError(-32000, "Bearer authorization required"),
+            new McpProtocolError(-32000, "Bearer authorization required")
           ),
-          { "WWW-Authenticate": 'Bearer realm="Zen MCP"' },
+          { "WWW-Authenticate": 'Bearer realm="Zen MCP"' }
         );
         return;
       }
       this.clientActivity.set(client.id, Date.now());
       if (
-        [...this.transports].filter((item) => item.client.id === client.id)
+        [...this.transports].filter(item => item.client.id === client.id)
           .length >= 16
       ) {
         throw new McpProtocolError(-32000, "Too many concurrent requests", 429);
@@ -951,7 +961,7 @@ class ZenMcpServiceImpl {
           throw new McpProtocolError(
             -32600,
             "Accept must include text/event-stream",
-            406,
+            406
           );
         }
         const context = this.protocol.session(headers, client);
@@ -970,7 +980,7 @@ class ZenMcpServiceImpl {
         throw new McpProtocolError(
           -32600,
           "Accept must include application/json and text/event-stream",
-          406,
+          406
         );
       }
       if (
@@ -980,7 +990,7 @@ class ZenMcpServiceImpl {
         throw new McpProtocolError(
           -32600,
           "Content-Type must be application/json",
-          415,
+          415
         );
       }
       if (
@@ -990,31 +1000,23 @@ class ZenMcpServiceImpl {
         throw new McpProtocolError(-32600, "Request body too large", 413);
       }
       const input = Cc["@mozilla.org/binaryinputstream;1"].createInstance(
-        Ci.nsIBinaryInputStream,
+        Ci.nsIBinaryInputStream
       );
       input.setInputStream(request.bodyInputStream);
       const bytes = input.readByteArray(input.available());
-      let body;
-      try {
-        body = new TextDecoder("utf-8", { fatal: true }).decode(
-          Uint8Array.from(bytes),
-        );
-      } catch {
-        throw new McpProtocolError(-32700, "Request body must be UTF-8", 400);
-      }
-      message = parseMessage(body, true);
+      message = parseMessage(decodeBody(bytes), true);
       const result = Array.isArray(message)
         ? await this.protocol.handleBatch(
             message,
             headers,
             client,
-            transport.controller.signal,
+            transport.controller.signal
           )
         : await this.protocol.handle(
             message,
             headers,
             client,
-            transport.controller.signal,
+            transport.controller.signal
           );
       if (result.stream) {
         this.beginStream(result.stream, transport);
@@ -1024,13 +1026,13 @@ class ZenMcpServiceImpl {
         response.setHeader(
           "Content-Type",
           "text/event-stream; charset=utf-8",
-          false,
+          false
         );
         response.setHeader("Cache-Control", "no-store", false);
         for (const item of result.batch) {
           writeUtf8(
             response,
-            `event: message\ndata: ${JSON.stringify(item)}\n\n`,
+            `event: message\ndata: ${JSON.stringify(item)}\n\n`
           );
         }
         response.finish();
@@ -1039,27 +1041,27 @@ class ZenMcpServiceImpl {
           response,
           result.status ?? 200,
           result.body,
-          result.sessionId ? { "Mcp-Session-Id": result.sessionId } : {},
+          result.sessionId ? { "Mcp-Session-Id": result.sessionId } : {}
         );
       }
       this.audit(
         message.method,
         message.params?.arguments,
         result.body?.result?.isError ? "tool_error" : "ok",
-        start,
+        start
       );
     } catch (error) {
       this.audit(
         message?.method ?? "http",
         message?.params?.arguments,
         "error",
-        start,
+        start
       );
       try {
         this.respond(
           response,
           error.status ?? 500,
-          errorMessage(message?.id, error),
+          errorMessage(message?.id, error)
         );
       } catch {}
     } finally {
@@ -1076,11 +1078,11 @@ class ZenMcpServiceImpl {
     response.setHeader(
       "Content-Type",
       "text/event-stream; charset=utf-8",
-      false,
+      false
     );
     response.setHeader("Cache-Control", "no-store", false);
     response.setHeader("X-Content-Type-Options", "nosniff", false);
-    const write = (value) =>
+    const write = value =>
       writeUtf8(response, `event: message\ndata: ${JSON.stringify(value)}\n\n`);
     transport.stream = this.protocol.openStream(spec, write, () => {
       this.transports.delete(transport);

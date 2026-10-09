@@ -59,18 +59,23 @@ const ELEMENT = {
 };
 const ELEMENT_REQUIRED = ["snapshotId", "elementId", "documentId", "action"];
 
-/** Reject IDs outside the explicit tab, including stale/reparented contexts. */
+/**
+ * Reject IDs outside the explicit tab, including stale/reparented contexts.
+ *
+ * @param {object} tab The explicitly selected native tab.
+ * @param {string} [frameId] An observed browsing context identifier.
+ */
 export function findFrame(tab, frameId) {
   requireValue(
     tab.linkedPanel && !tab.hasAttribute("pending"),
     "tab_unloaded",
-    "The tab is unloaded; navigate or select it explicitly before inspecting",
+    "The tab is unloaded; navigate or select it explicitly before inspecting"
   );
   const top = tab.linkedBrowser?.browsingContext;
   requireValue(
     top && !top.isDiscarded,
     "tab_unloaded",
-    "The tab has no live document; navigate or select it explicitly before inspecting",
+    "The tab has no live document; navigate or select it explicitly before inspecting"
   );
   if (frameId === undefined) {
     return top;
@@ -78,7 +83,7 @@ export function findFrame(tab, frameId) {
   requireValue(
     typeof frameId === "string",
     "invalid_frame",
-    "frameId must come from zen_page_frames",
+    "frameId must come from zen_page_frames"
   );
   const queue = [top];
   for (let index = 0; index < queue.length; index++) {
@@ -87,7 +92,7 @@ export function findFrame(tab, frameId) {
       requireValue(
         context.top === top,
         "wrong_frame_target",
-        "Frame does not belong to the requested tab",
+        "Frame does not belong to the requested tab"
       );
       return context;
     }
@@ -95,7 +100,7 @@ export function findFrame(tab, frameId) {
   }
   throw new McpToolError(
     "wrong_frame_target",
-    "Frame is missing or belongs to another tab",
+    "Frame is missing or belongs to another tab"
   );
 }
 
@@ -116,12 +121,12 @@ export function withDeadline(promise, timeoutMs = 15000, signal, onCancel) {
   requireValue(
     Number.isInteger(timeoutMs) && timeoutMs >= 0 && timeoutMs <= 60000,
     "invalid_timeout",
-    "timeoutMs must be from 0 to 60000",
+    "timeoutMs must be from 0 to 60000"
   );
   if (signal?.aborted) {
     onCancel?.();
     return Promise.reject(
-      new McpToolError("cancelled", "The request was cancelled"),
+      new McpToolError("cancelled", "The request was cancelled")
     );
   }
   return new Promise((resolve, reject) => {
@@ -144,20 +149,20 @@ export function withDeadline(promise, timeoutMs = 15000, signal, onCancel) {
     const abort = () =>
       cancel(
         "cancelled",
-        "The request was cancelled; an action may already have completed",
+        "The request was cancelled; an action may already have completed"
       );
     const timer = setTimeout(
       () =>
         cancel(
           "operation_timeout",
-          "The wait timed out; synchronous JavaScript or an action may still be running. Inspect current state before retrying",
+          "The wait timed out; synchronous JavaScript or an action may still be running. Inspect current state before retrying"
         ),
-      timeoutMs,
+      timeoutMs
     );
     signal?.addEventListener("abort", abort, { once: true });
     Promise.resolve(promise).then(
-      (value) => done(resolve, value),
-      (error) => done(reject, error),
+      value => done(resolve, value),
+      error => done(reject, error)
     );
   });
 }
@@ -176,20 +181,20 @@ export function screenshotClip(args, viewport) {
       clip.width > 0 &&
       clip.height > 0,
     "invalid_clip",
-    "clip must contain nonnegative x/y and positive finite width/height",
+    "clip must contain nonnegative x/y and positive finite width/height"
   );
   requireValue(
     clip.width <= 16384 &&
       clip.height <= 16384 &&
       clip.width * clip.height <= 32000000,
     "invalid_clip",
-    "Screenshot dimensions exceed the size limit",
+    "Screenshot dimensions exceed the size limit"
   );
   requireValue(
     clip.x + clip.width <= viewport.width &&
       clip.y + clip.height <= viewport.height,
     "invalid_clip",
-    "clip must fit inside the visible viewport",
+    "clip must fit inside the visible viewport"
   );
   return clip;
 }
@@ -210,14 +215,14 @@ export class ZenMcpPageTools {
         "List the live frame tree of one explicit non-private tab without loading dormant tabs. Omitted frameId means its top document.",
         { tabId: schema.string, ...LIST },
         ["tabId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_page_snapshot",
         "Inspect semantic DOM elements, including open shadow roots. Handles expire in 30 seconds and allow one action per snapshot; inspect frames separately.",
         { ...PAGE, ...SNAPSHOT },
         ["tabId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_page_text",
@@ -228,13 +233,13 @@ export class ZenMcpPageTools {
           maxChars: { type: "integer", minimum: 1, maximum: 1000000 },
         },
         ["tabId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_page_action",
         "Perform a trusted pointer, key, form, scroll or upload action on a fresh element handle and return observed state. Never retries actions.",
         { ...PAGE, ...ELEMENT },
-        ["tabId", ...ELEMENT_REQUIRED],
+        ["tabId", ...ELEMENT_REQUIRED]
       ),
       makeTool(
         "zen_page_navigate",
@@ -246,7 +251,7 @@ export class ZenMcpPageTools {
           waitUntil: schema.enum("none", "domcontentloaded", "load"),
           timeoutMs: { type: "integer", minimum: 0, maximum: 60000 },
         },
-        ["tabId", "action"],
+        ["tabId", "action"]
       ),
       makeTool(
         "zen_page_wait",
@@ -260,20 +265,20 @@ export class ZenMcpPageTools {
           ...LIST,
         },
         ["tabId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_chrome_snapshot",
         "Inspect the native Zen interface and visible native menu items in one explicit normal window, including open shadow roots.",
         { windowId: schema.string, ...SNAPSHOT },
         ["windowId"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_chrome_action",
         "Operate a native Zen control or menu using fresh snapshot handles and return actual state.",
         { windowId: schema.string, ...ELEMENT },
-        ["windowId", ...ELEMENT_REQUIRED],
+        ["windowId", ...ELEMENT_REQUIRED]
       ),
       makeTool(
         "zen_screenshot",
@@ -297,7 +302,7 @@ export class ZenMcpPageTools {
           quality: { type: "number", minimum: 0, maximum: 1 },
         },
         ["scope"],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_dialog",
@@ -308,7 +313,7 @@ export class ZenMcpPageTools {
           dialogId: schema.string,
           text: schema.string,
         },
-        ["tabId", "action"],
+        ["tabId", "action"]
       ),
       makeTool(
         "zen_javascript",
@@ -320,7 +325,7 @@ export class ZenMcpPageTools {
           source: schema.string,
           timeoutMs: { type: "integer", minimum: 0, maximum: 60000 },
         },
-        ["scope", "source"],
+        ["scope", "source"]
       ),
       makeTool(
         "zen_console",
@@ -331,7 +336,7 @@ export class ZenMcpPageTools {
           level: schema.string,
           ...LIST,
         },
-        ["tabId", "action"],
+        ["tabId", "action"]
       ),
       makeTool(
         "zen_network",
@@ -344,7 +349,7 @@ export class ZenMcpPageTools {
           maxChars: { type: "integer", minimum: 1, maximum: 1000000 },
           ...LIST,
         },
-        ["tabId", "action"],
+        ["tabId", "action"]
       ),
     ];
     const nullableString = { type: ["string", "null"] };
@@ -425,7 +430,7 @@ export class ZenMcpPageTools {
     requireValue(
       typeof client?.id === "string",
       "invalid_client",
-      "An authenticated client is required",
+      "An authenticated client is required"
     );
     requireValue(!signal?.aborted, "cancelled", "The request was cancelled");
     let result;
@@ -455,7 +460,7 @@ export class ZenMcpPageTools {
           name.slice("zen_page_".length),
           args,
           client,
-          signal,
+          signal
         );
         break;
       case "zen_page_navigate":
@@ -471,7 +476,7 @@ export class ZenMcpPageTools {
             client.id,
             args.windowId,
             args,
-            true,
+            true
           ),
         };
         break;
@@ -484,14 +489,14 @@ export class ZenMcpPageTools {
           this.snapshots,
           client.id,
           args.windowId,
-          args,
+          args
         );
         result = {
           windowId: args.windowId,
           ...(await withDeadline(
             performAction(win, element, args, true),
             15000,
-            signal,
+            signal
           )),
           browser: this.service.state(),
         };
@@ -509,30 +514,30 @@ export class ZenMcpPageTools {
         requireValue(
           ["start", "read", "clear", "stop"].includes(args.action),
           "invalid_action",
-          "Unknown console action",
+          "Unknown console action"
         );
         result = await withDeadline(
           this.devtools.console(args, client),
           15000,
-          signal,
+          signal
         );
         break;
       case "zen_network":
         requireValue(
           ["start", "read", "details", "clear", "stop"].includes(args.action),
           "invalid_action",
-          "Unknown network action",
+          "Unknown network action"
         );
         result = await withDeadline(
           this.devtools.network(args, client),
           15000,
-          signal,
+          signal
         );
         break;
       default:
         throw new McpToolError(
           "unknown_tool",
-          "The page tool is not supported",
+          "The page tool is not supported"
         );
     }
     return { instanceId: this.service.instanceId, ...result };
@@ -543,7 +548,7 @@ export class ZenMcpPageTools {
     requireValue(
       typeof client?.id === "string",
       "invalid_client",
-      "An authenticated client is required",
+      "An authenticated client is required"
     );
     requireValue(!signal?.aborted, "cancelled", "The request was cancelled");
     const tab = this.service.getTab(tabId);
@@ -552,7 +557,7 @@ export class ZenMcpPageTools {
     requireValue(
       global && !global.isClosed && global.isCurrentGlobal !== false,
       "document_unavailable",
-      "The frame has no live document yet",
+      "The frame has no live document yet"
     );
     const actor = global.getActor("ZenMcp");
     let owned = this.actors.get(client.id);
@@ -560,7 +565,7 @@ export class ZenMcpPageTools {
       this.actors.set(client.id, (owned = new Set()));
     }
     // Weak references avoid retaining old WindowGlobals across navigation.
-    if (![...owned].some((reference) => reference.deref() === actor)) {
+    if (![...owned].some(reference => reference.deref() === actor)) {
       for (const reference of owned) {
         if (!reference.deref()) {
           owned.delete(reference);
@@ -590,7 +595,7 @@ export class ZenMcpPageTools {
           ? Math.min(60000, (args.timeoutMs ?? 15000) + 1000)
           : 15000,
         signal,
-        cancelled,
+        cancelled
       );
     } catch (error) {
       if (error instanceof McpToolError) {
@@ -598,18 +603,18 @@ export class ZenMcpPageTools {
       }
       throw new McpToolError(
         "target_changed",
-        "The page target changed or closed during this command. An action may have completed; inspect current state before retrying",
+        "The page target changed or closed during this command. An action may have completed; inspect current state before retrying"
       );
     }
     requireValue(
       response && typeof response.ok === "boolean",
       "invalid_actor_reply",
-      "The page returned an invalid response",
+      "The page returned an invalid response"
     );
     if (!response.ok) {
       throw new McpToolError(
         response.error?.code || "page_operation_failed",
-        response.error?.message || "The page operation failed",
+        response.error?.message || "The page operation failed"
       );
     }
     const current = findFrame(this.service.getTab(tabId), frameId);
@@ -620,7 +625,7 @@ export class ZenMcpPageTools {
     requireValue(
       command === "action" || !documentChanged,
       "stale_document",
-      "The document changed during the command; inspect it again",
+      "The document changed during the command; inspect it again"
     );
     return {
       instanceId: this.service.instanceId,
@@ -635,19 +640,19 @@ export class ZenMcpPageTools {
     requireValue(
       ["navigate", "back", "forward", "reload", "stop"].includes(args.action),
       "invalid_action",
-      "Unknown navigation action",
+      "Unknown navigation action"
     );
     const waitUntil = args.waitUntil ?? "load";
     requireValue(
       ["none", "domcontentloaded", "load"].includes(waitUntil),
       "invalid_wait",
-      "waitUntil must be none, domcontentloaded or load",
+      "waitUntil must be none, domcontentloaded or load"
     );
     const timeoutMs = args.timeoutMs ?? 15000;
     requireValue(
       Number.isInteger(timeoutMs) && timeoutMs >= 0 && timeoutMs <= 60000,
       "invalid_timeout",
-      "timeoutMs must be from 0 to 60000",
+      "timeoutMs must be from 0 to 60000"
     );
     const tab = this.service.getTab(args.tabId);
     const browser = tab.linkedBrowser;
@@ -675,9 +680,9 @@ export class ZenMcpPageTools {
     try {
       if (args.action === "navigate") {
         requireValue(
-          typeof args.url === "string" && args.url.length > 0,
+          typeof args.url === "string" && !!args.url.length,
           "invalid_url",
-          "url is required for navigation",
+          "url is required for navigation"
         );
         let uri;
         try {
@@ -685,13 +690,13 @@ export class ZenMcpPageTools {
         } catch {
           throw new McpToolError(
             "invalid_url",
-            "url must be an absolute supported URL",
+            "url must be an absolute supported URL"
           );
         }
         requireValue(
           !["javascript", "vbscript"].includes(uri.scheme),
           "invalid_url",
-          "Use zen_javascript for script execution",
+          "Use zen_javascript for script execution"
         );
         browser.loadURI(uri, {
           triggeringPrincipal:
@@ -701,14 +706,14 @@ export class ZenMcpPageTools {
         requireValue(
           browser.canGoBack,
           "history_boundary",
-          "This tab cannot go back",
+          "This tab cannot go back"
         );
         browser.goBack();
       } else if (args.action === "forward") {
         requireValue(
           browser.canGoForward,
           "history_boundary",
-          "This tab cannot go forward",
+          "This tab cannot go forward"
         );
         browser.goForward();
       } else if (args.action === "reload") {
@@ -722,7 +727,7 @@ export class ZenMcpPageTools {
           requireValue(
             !signal?.aborted,
             "cancelled",
-            "Navigation may have completed; inspect the tab",
+            "Navigation may have completed; inspect the tab"
           );
           const currentTab = this.service.getTab(args.tabId);
           const frame = currentTab.linkedBrowser.browsingContext;
@@ -735,7 +740,7 @@ export class ZenMcpPageTools {
               "identity",
               {},
               client,
-              signal,
+              signal
             );
             if (
               (waitUntil === "domcontentloaded" &&
@@ -753,12 +758,12 @@ export class ZenMcpPageTools {
           requireValue(
             Date.now() < deadline,
             "navigation_timeout",
-            "Navigation did not reach the requested state; inspect the tab before retrying",
+            "Navigation did not reach the requested state; inspect the tab before retrying"
           );
           await withDeadline(
-            new Promise((resolve) => setTimeout(resolve, 50)),
+            new Promise(resolve => setTimeout(resolve, 50)),
             Math.max(0, Math.min(1000, deadline - Date.now())),
-            signal,
+            signal
           );
         }
       }
@@ -777,12 +782,12 @@ export class ZenMcpPageTools {
     requireValue(
       ["page", "chrome"].includes(args.scope),
       "invalid_scope",
-      "scope must be page or chrome",
+      "scope must be page or chrome"
     );
     requireValue(
       args.format === undefined || ["png", "jpeg"].includes(args.format),
       "invalid_format",
-      "format must be png or jpeg",
+      "format must be png or jpeg"
     );
     requireValue(
       args.quality === undefined ||
@@ -790,7 +795,7 @@ export class ZenMcpPageTools {
           args.quality >= 0 &&
           args.quality <= 1),
       "invalid_quality",
-      "quality must be from 0 to 1",
+      "quality must be from 0 to 1"
     );
     let win, frame, viewport, identity;
     if (args.scope === "chrome") {
@@ -808,7 +813,7 @@ export class ZenMcpPageTools {
         "identity",
         {},
         client,
-        signal,
+        signal
       );
       viewport = page.viewport;
       identity = {
@@ -821,19 +826,19 @@ export class ZenMcpPageTools {
     requireValue(
       String(frame.currentWindowGlobal?.innerWindowId) === identity.documentId,
       "stale_document",
-      "The document changed before capture; inspect it again",
+      "The document changed before capture; inspect it again"
     );
     const canvas = await withDeadline(
       lazy.capture.canvas(win, frame, clip.x, clip.y, clip.width, clip.height, {
         drawView: true,
       }),
       15000,
-      signal,
+      signal
     );
     requireValue(
       String(frame.currentWindowGlobal?.innerWindowId) === identity.documentId,
       "stale_document",
-      "The document changed during capture; inspect it again",
+      "The document changed during capture; inspect it again"
     );
     const mimeType = args.format === "jpeg" ? "image/jpeg" : "image/png";
     const data = lazy.capture.toBase64(canvas, mimeType, args.quality ?? 0.9);
@@ -869,7 +874,7 @@ export class ZenMcpPageTools {
     requireValue(
       ["inspect", "accept", "dismiss"].includes(args.action),
       "invalid_action",
-      "Unknown dialog action",
+      "Unknown dialog action"
     );
     const tab = this.service.getTab(args.tabId);
     const prompt = this.#prompt(tab);
@@ -889,19 +894,19 @@ export class ZenMcpPageTools {
     requireValue(
       prompt?.isOpen,
       "missing_dialog",
-      "This tab has no open page dialog",
+      "This tab has no open page dialog"
     );
     requireValue(
       args.dialogId === documentIdentity(prompt.window),
       "stale_dialog",
-      "The dialog changed; inspect it again",
+      "The dialog changed; inspect it again"
     );
     requireValue(!signal?.aborted, "cancelled", "The request was cancelled");
     if (args.text !== undefined) {
       requireValue(
         prompt.promptType === "prompt" && typeof args.text === "string",
         "wrong_dialog",
-        "Only a text prompt accepts text",
+        "Only a text prompt accepts text"
       );
       prompt.text = args.text;
     }
@@ -922,18 +927,18 @@ export class ZenMcpPageTools {
     requireValue(
       ["page", "browser"].includes(args.scope),
       "invalid_scope",
-      "scope must be page or browser",
+      "scope must be page or browser"
     );
     requireValue(
       typeof args.source === "string" && args.source.length <= 1000000,
       "invalid_source",
-      "source must be a string of at most 1000000 characters",
+      "source must be a string of at most 1000000 characters"
     );
     const timeoutMs = args.timeoutMs ?? 15000;
     requireValue(
       Number.isInteger(timeoutMs) && timeoutMs >= 0 && timeoutMs <= 60000,
       "invalid_timeout",
-      "timeoutMs must be from 0 to 60000",
+      "timeoutMs must be from 0 to 60000"
     );
     if (args.scope === "browser") {
       const win = this.service.getWindow(args.windowId);
@@ -944,7 +949,7 @@ export class ZenMcpPageTools {
         value = await withDeadline(
           Promise.resolve(win.eval(args.source)),
           timeoutMs,
-          signal,
+          signal
         );
       } catch (error) {
         if (error instanceof McpToolError) {
@@ -967,13 +972,13 @@ export class ZenMcpPageTools {
     requireValue(
       frame.currentWindowGlobal,
       "document_unavailable",
-      "This frame has no live document yet",
+      "This frame has no live document yet"
     );
     const documentId = String(frame.currentWindowGlobal.innerWindowId);
     const result = await withDeadline(
       this.devtools.evaluate(args.tabId, frame, args.source, client),
       timeoutMs,
-      signal,
+      signal
     );
     return {
       tabId: args.tabId,
@@ -982,7 +987,7 @@ export class ZenMcpPageTools {
       scope: "page",
       ...result,
       observed: frameIdentity(
-        findFrame(this.service.getTab(args.tabId), args.frameId),
+        findFrame(this.service.getTab(args.tabId), args.frameId)
       ),
     };
   }

@@ -39,7 +39,7 @@ export class ZenMcpCredentials {
     ) {
       throw new McpToolError(
         "invalid_credentials",
-        "MCP client registry is invalid",
+        "MCP client registry is invalid"
       );
     }
     const clients = new Map();
@@ -56,7 +56,7 @@ export class ZenMcpCredentials {
       ) {
         throw new McpToolError(
           "invalid_credentials",
-          "MCP client registry is invalid",
+          "MCP client registry is invalid"
         );
       }
       clients.set(client.id, {
@@ -71,7 +71,16 @@ export class ZenMcpCredentials {
   }
 
   list() {
-    return [...this.clients.values()].map(({ hash, ...client }) => client);
+    return [...this.clients.values()].map(client => this.publicClient(client));
+  }
+
+  publicClient(client) {
+    return {
+      id: client.id,
+      name: client.name,
+      createdAt: client.createdAt,
+      lastUsedAt: client.lastUsedAt,
+    };
   }
 
   authenticate(authorization) {
@@ -113,16 +122,16 @@ export class ZenMcpCredentials {
       ) {
         throw new McpToolError(
           "invalid_name",
-          "Client name must contain 1–100 characters",
+          "Client name must contain 1–100 characters"
         );
       }
       if (this.clients.size >= 128) {
         throw new McpToolError("client_limit", "The MCP client limit is 128");
       }
-      if ([...this.clients.values()].some((client) => client.name === name)) {
+      if ([...this.clients.values()].some(client => client.name === name)) {
         throw new McpToolError(
           "duplicate_name",
-          "A client with this name already exists",
+          "A client with this name already exists"
         );
       }
       const token = this.random();
@@ -136,8 +145,7 @@ export class ZenMcpCredentials {
       const clients = new Map(this.clients);
       clients.set(client.id, client);
       await this.save(clients);
-      const { hash, ...publicClient } = client;
-      return { client: publicClient, token };
+      return { client: this.publicClient(client), token };
     });
   }
 
@@ -147,7 +155,7 @@ export class ZenMcpCredentials {
       if (!previous) {
         throw new McpToolError(
           "unknown_client",
-          "The MCP client no longer exists",
+          "The MCP client no longer exists"
         );
       }
       const token = this.random();
@@ -156,8 +164,7 @@ export class ZenMcpCredentials {
       clients.set(clientId, client);
       await this.save(clients);
       this.revoked?.(clientId);
-      const { hash, ...publicClient } = client;
-      return { client: publicClient, token };
+      return { client: this.publicClient(client), token };
     });
   }
 
@@ -166,7 +173,7 @@ export class ZenMcpCredentials {
       if (!this.clients.has(clientId)) {
         throw new McpToolError(
           "unknown_client",
-          "The MCP client no longer exists",
+          "The MCP client no longer exists"
         );
       }
       const clients = new Map(this.clients);

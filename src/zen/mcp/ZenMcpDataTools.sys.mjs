@@ -147,9 +147,9 @@ function listOutput(item) {
 
 function string(value, field, allowEmpty = false) {
   requireValue(
-    typeof value === "string" && (allowEmpty || value.trim().length > 0),
+    typeof value === "string" && (allowEmpty || !!value.trim().length),
     "invalid_argument",
-    `${field} must be a ${allowEmpty ? "" : "non-empty "}string`,
+    `${field} must be a ${allowEmpty ? "" : "non-empty "}string`
   );
   return value;
 }
@@ -158,26 +158,26 @@ function originAttributes(value = {}) {
   requireValue(
     value && typeof value === "object" && !Array.isArray(value),
     "invalid_origin_attributes",
-    "originAttributes must be an object",
+    "originAttributes must be an object"
   );
   for (const key of Object.keys(value)) {
     requireValue(
       ["userContextId", "partitionKey", "firstPartyDomain"].includes(key),
       "invalid_origin_attributes",
-      "Only public container and partition attributes are supported",
+      "Only public container and partition attributes are supported"
     );
   }
   requireValue(
     value.userContextId === undefined ||
       (Number.isInteger(value.userContextId) && value.userContextId >= 0),
     "invalid_origin_attributes",
-    "userContextId must be a non-negative integer",
+    "userContextId must be a non-negative integer"
   );
   for (const key of ["partitionKey", "firstPartyDomain"]) {
     requireValue(
       value[key] === undefined || typeof value[key] === "string",
       "invalid_origin_attributes",
-      `${key} must be a string`,
+      `${key} must be a string`
     );
   }
   return { ...value, privateBrowsingId: 0 };
@@ -254,7 +254,7 @@ export class ZenMcpDataTools {
           query: schema.string,
         },
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_bookmark",
@@ -269,7 +269,7 @@ export class ZenMcpDataTools {
           index: { type: "integer", minimum: -1 },
           orderedGuids: schema.strings,
         },
-        ["action"],
+        ["action"]
       ),
       makeTool(
         "zen_history_list",
@@ -283,7 +283,7 @@ export class ZenMcpDataTools {
           until: schema.integer,
         },
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_history",
@@ -295,14 +295,14 @@ export class ZenMcpDataTools {
           title: schema.string,
           visitTime: schema.integer,
         },
-        ["action"],
+        ["action"]
       ),
       makeTool(
         "zen_downloads_list",
         "List public downloads; opaque downloadIds remain valid for this browser instance.",
         page,
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_download",
@@ -314,7 +314,7 @@ export class ZenMcpDataTools {
           targetPath: schema.string,
           removePartialData: schema.boolean,
         },
-        ["action"],
+        ["action"]
       ),
       makeTool(
         "zen_cookies_list",
@@ -326,7 +326,7 @@ export class ZenMcpDataTools {
           originAttributes: attributesSchema,
         },
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_cookie",
@@ -343,7 +343,7 @@ export class ZenMcpDataTools {
           schemeMap: { type: "integer", minimum: 0, maximum: 3 },
           isPartitioned: schema.boolean,
         },
-        ["action", "host", "name"],
+        ["action", "host", "name"]
       ),
       makeTool(
         "zen_storage",
@@ -359,14 +359,14 @@ export class ZenMcpDataTools {
           store: schema.string,
           ...page,
         },
-        ["action", "tabId", "area"],
+        ["action", "tabId", "area"]
       ),
       makeTool(
         "zen_extensions_list",
         "List installed add-ons, including enable/disable/uninstall capability bits.",
         { ...page, type: schema.string },
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_extension",
@@ -376,7 +376,7 @@ export class ZenMcpDataTools {
           addonId: schema.string,
           url: schema.string,
         },
-        ["action"],
+        ["action"]
       ),
       makeTool(
         "zen_permissions_list",
@@ -388,7 +388,7 @@ export class ZenMcpDataTools {
           originAttributes: attributesSchema,
         },
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_permission",
@@ -401,14 +401,14 @@ export class ZenMcpDataTools {
           scope: schema.enum("persistent", "session"),
           originAttributes: attributesSchema,
         },
-        ["action", "origin", "permission"],
+        ["action", "origin", "permission"]
       ),
       makeTool(
         "zen_preferences_list",
         "Read typed preferences, optionally by prefix or exact name. Locked status and presence of a user value are included.",
         { ...page, prefix: schema.string, name: schema.string },
         [],
-        { readOnly: true },
+        { readOnly: true }
       ),
       makeTool(
         "zen_preference",
@@ -419,9 +419,9 @@ export class ZenMcpDataTools {
           type: schema.enum("boolean", "integer", "string"),
           value: { type: ["boolean", "integer", "string"] },
         },
-        ["action", "name"],
+        ["action", "name"]
       ),
-    ].map((tool) => {
+    ].map(tool => {
       const outputs = {
         zen_bookmarks_list: {
           ...listOutput(bookmarkSchema),
@@ -521,7 +521,7 @@ export class ZenMcpDataTools {
   }
 
   owns(name) {
-    return this.getTools().some((tool) => tool.name === name);
+    return this.getTools().some(tool => tool.name === name);
   }
 
   async execute(name, args, client, signal) {
@@ -529,7 +529,7 @@ export class ZenMcpDataTools {
     requireValue(
       !signal?.aborted,
       "cancelled",
-      "The request was cancelled before the operation",
+      "The request was cancelled before the operation"
     );
     const handlers = {
       zen_bookmarks_list: () => this.bookmarksList(args),
@@ -551,7 +551,7 @@ export class ZenMcpDataTools {
     requireValue(
       handlers[name],
       "unknown_tool",
-      `Unknown profile tool: ${name}`,
+      `Unknown profile tool: ${name}`
     );
     return { instanceId: this.service.instanceId, ...(await handlers[name]()) };
   }
@@ -570,9 +570,8 @@ export class ZenMcpDataTools {
       items = await api.search({ query: string(args.query, "query", true) });
     } else {
       items = [];
-      await api.fetch(
-        { parentGuid: args.parentGuid ?? api.rootGuid },
-        (value) => items.push(value),
+      await api.fetch({ parentGuid: args.parentGuid ?? api.rootGuid }, value =>
+        items.push(value)
       );
     }
     const slice = paginate(items, args);
@@ -593,7 +592,7 @@ export class ZenMcpDataTools {
         requireValue(
           type in types,
           "invalid_argument",
-          "Unknown bookmark type",
+          "Unknown bookmark type"
         );
         const info = {
           parentGuid: string(args.parentGuid, "parentGuid"),
@@ -622,7 +621,7 @@ export class ZenMcpDataTools {
         requireValue(
           Object.keys(info).length > 1,
           "invalid_argument",
-          "Specify at least one field to update",
+          "Specify at least one field to update"
         );
         await api.update(info);
         item = await api.fetch(info.guid);
@@ -638,9 +637,9 @@ export class ZenMcpDataTools {
         const parentGuid = string(args.parentGuid, "parentGuid");
         requireValue(
           Array.isArray(args.orderedGuids) &&
-            args.orderedGuids.every((value) => typeof value === "string"),
+            args.orderedGuids.every(value => typeof value === "string"),
           "invalid_argument",
-          "orderedGuids must be an array of GUIDs",
+          "orderedGuids must be an array of GUIDs"
         );
         await api.reorder(parentGuid, args.orderedGuids);
         this.changed("bookmarks");
@@ -667,7 +666,7 @@ export class ZenMcpDataTools {
               guid: value.guid,
               url: value.url.href,
               title: value.title || "",
-              visits: visits.map((visit) => ({
+              visits: visits.map(visit => ({
                 date: visit.date.toISOString(),
                 transition: visit.transition,
               })),
@@ -687,7 +686,7 @@ export class ZenMcpDataTools {
         requireValue(
           Number.isSafeInteger(args[input]) && args[input] >= 0,
           "invalid_argument",
-          `${input} must be Unix milliseconds`,
+          `${input} must be Unix milliseconds`
         );
         query[output] = args[input] * 1000;
       }
@@ -706,13 +705,13 @@ export class ZenMcpDataTools {
           slice(start, end) {
             return Array.from(
               { length: Math.max(0, Math.min(end, this.length) - start) },
-              (_, index) => start + index,
+              (_, index) => start + index
             );
           },
         },
-        args,
+        args
       );
-      slice.items = slice.items.map((index) => {
+      slice.items = slice.items.map(index => {
         const node = root.getChild(index);
         return {
           guid: node.pageGuid,
@@ -738,7 +737,7 @@ export class ZenMcpDataTools {
           visitTime >= 0 &&
           visitTime <= Date.now(),
         "invalid_argument",
-        "visitTime must be a past Unix millisecond timestamp",
+        "visitTime must be a past Unix millisecond timestamp"
       );
       await api.insert({
         url,
@@ -753,7 +752,7 @@ export class ZenMcpDataTools {
     requireValue(
       args.action === "remove",
       "invalid_action",
-      "Unknown history action",
+      "Unknown history action"
     );
     const id = string(args.url ?? args.guid, "url or guid");
     await api.remove(id);
@@ -792,7 +791,7 @@ export class ZenMcpDataTools {
     const list = await lazy.Downloads.getList(lazy.Downloads.PUBLIC);
     return {
       list,
-      items: (await list.getAll()).filter((value) => !value.source.isPrivate),
+      items: (await list.getAll()).filter(value => !value.source.isPrivate),
     };
   }
 
@@ -801,7 +800,7 @@ export class ZenMcpDataTools {
     const slice = paginate(items, args);
     return {
       ...slice,
-      items: slice.items.map((value) => this.download(value)),
+      items: slice.items.map(value => this.download(value)),
     };
   }
 
@@ -813,13 +812,13 @@ export class ZenMcpDataTools {
       requireValue(
         ["http", "https"].includes(uri.scheme),
         "invalid_argument",
-        "Downloads require an HTTP(S) URL",
+        "Downloads require an HTTP(S) URL"
       );
       const target = string(args.targetPath, "targetPath");
       requireValue(
         PathUtils.isAbsolute(target),
         "invalid_argument",
-        "targetPath must be absolute",
+        "targetPath must be absolute"
       );
       const value = await lazy.Downloads.createDownload({
         source: { url, isPrivate: false },
@@ -832,11 +831,11 @@ export class ZenMcpDataTools {
       return { item: this.download(value) };
     }
     const id = string(args.downloadId, "downloadId");
-    const value = items.find((item) => this.download(item).downloadId === id);
+    const value = items.find(item => this.download(item).downloadId === id);
     requireValue(
       value,
       "unknown_download",
-      "Download no longer exists in this public instance",
+      "Download no longer exists in this public instance"
     );
     switch (args.action) {
       case "start":
@@ -872,7 +871,7 @@ export class ZenMcpDataTools {
         ? null
         : originAttributes(args.originAttributes);
     return Array.from(Services.cookies.cookies).filter(
-      (value) =>
+      value =>
         !value.originAttributes.privateBrowsingId &&
         (args.host === undefined || value.host === args.host) &&
         (args.name === undefined || value.name === args.name) &&
@@ -880,8 +879,8 @@ export class ZenMcpDataTools {
           Object.entries(attrs).every(
             ([key, attribute]) =>
               (value.originAttributes[key] ??
-                (typeof attribute === "number" ? 0 : "")) === attribute,
-          )),
+                (typeof attribute === "number" ? 0 : "")) === attribute
+          ))
     );
   }
 
@@ -897,7 +896,7 @@ export class ZenMcpDataTools {
     requireValue(
       typeof path === "string" && path.startsWith("/"),
       "invalid_argument",
-      "path must start with /",
+      "path must start with /"
     );
     const attrs = originAttributes(args.originAttributes);
     if (args.action === "set") {
@@ -906,7 +905,7 @@ export class ZenMcpDataTools {
       requireValue(
         Number.isSafeInteger(expiry) && expiry >= 0,
         "invalid_argument",
-        "expiry must be Unix milliseconds",
+        "expiry must be Unix milliseconds"
       );
       const sameSite = args.sameSite ?? Ci.nsICookie.SAMESITE_UNSET;
       const schemeMap = args.schemeMap ?? 0;
@@ -916,7 +915,7 @@ export class ZenMcpDataTools {
           schemeMap >= 0 &&
           schemeMap <= 3,
         "invalid_argument",
-        "Invalid sameSite or schemeMap",
+        "Invalid sameSite or schemeMap"
       );
       const validation = Services.cookies.add(
         host,
@@ -930,18 +929,18 @@ export class ZenMcpDataTools {
         attrs,
         sameSite,
         schemeMap,
-        args.isPartitioned ?? false,
+        args.isPartitioned ?? false
       );
       requireValue(
         !validation || validation.result === Ci.nsICookieValidation.eOK,
         "cookie_rejected",
-        validation?.errorString || "Gecko rejected the cookie",
+        validation?.errorString || "Gecko rejected the cookie"
       );
     } else {
       requireValue(
         args.action === "remove",
         "invalid_action",
-        "Unknown cookie action",
+        "Unknown cookie action"
       );
       Services.cookies.remove(host, name, path, attrs);
     }
@@ -950,7 +949,7 @@ export class ZenMcpDataTools {
       host,
       name,
       originAttributes: args.originAttributes ?? {},
-    }).filter((item) => item.path === path);
+    }).filter(item => item.path === path);
     return {
       host,
       name,
@@ -966,12 +965,12 @@ export class ZenMcpDataTools {
     requireValue(
       ["list", "get", "set", "remove", "clear"].includes(args.action),
       "invalid_action",
-      "Unknown storage action",
+      "Unknown storage action"
     );
     requireValue(
       ["local", "session", "indexedDB"].includes(args.area),
       "invalid_argument",
-      "area must be local, session or indexedDB",
+      "area must be local, session or indexedDB"
     );
     string(args.tabId, "tabId");
     if (args.area === "indexedDB") {
@@ -987,14 +986,14 @@ export class ZenMcpDataTools {
         requireValue(
           args.key !== undefined,
           "invalid_argument",
-          "key is required",
+          "key is required"
         );
       }
       if (args.action === "set") {
         requireValue(
           args.value !== undefined,
           "invalid_argument",
-          "value is required",
+          "value is required"
         );
       }
     } else {
@@ -1020,7 +1019,7 @@ export class ZenMcpDataTools {
         limit: args.limit,
       },
       client,
-      signal,
+      signal
     );
     if (!["list", "get"].includes(args.action)) {
       this.changed("storage");
@@ -1030,7 +1029,7 @@ export class ZenMcpDataTools {
 
   async extensionsList(args) {
     const items = (await lazy.AddonManager.getAllAddons()).filter(
-      (value) => args.type === undefined || value.type === args.type,
+      value => args.type === undefined || value.type === args.type
     );
     const slice = paginate(items, args);
     return { ...slice, items: slice.items.map(addon) };
@@ -1043,18 +1042,18 @@ export class ZenMcpDataTools {
       requireValue(
         Services.io.newURI(url).scheme === "https",
         "invalid_argument",
-        "Extension installation requires an HTTPS URL",
+        "Extension installation requires an HTTPS URL"
       );
       const install = await api.getInstallForURL(url);
       requireValue(
         install,
         "extension_install_unavailable",
-        "Gecko did not provide an installer for this URL",
+        "Gecko did not provide an installer for this URL"
       );
       requireValue(
         !signal?.aborted,
         "cancelled",
-        "Request cancelled before extension installation",
+        "Request cancelled before extension installation"
       );
       const key = uuid();
       this.installs.set(key, { clientId: client.id, install });
@@ -1084,12 +1083,12 @@ export class ZenMcpDataTools {
     requireValue(
       permission !== undefined,
       "invalid_action",
-      "Unknown extension action",
+      "Unknown extension action"
     );
     requireValue(
       (value.permissions & permission) !== 0,
       "addon_policy",
-      "This operation is not allowed for the add-on",
+      "This operation is not allowed for the add-on"
     );
     if (args.action === "enable") {
       await value.enable();
@@ -1115,11 +1114,11 @@ export class ZenMcpDataTools {
     requireValue(
       ["http", "https"].includes(uri.scheme) && uri.prePath === origin,
       "invalid_origin",
-      "origin must be an HTTP(S) site origin without a path",
+      "origin must be an HTTP(S) site origin without a path"
     );
     return Services.scriptSecurityManager.createContentPrincipal(
       uri,
-      originAttributes(args.originAttributes),
+      originAttributes(args.originAttributes)
     );
   }
 
@@ -1129,7 +1128,7 @@ export class ZenMcpDataTools {
       requireValue(
         lazy.SitePermissions.listPermissions().includes(args.permission),
         "unknown_permission",
-        "Unsupported site permission",
+        "Unsupported site permission"
       );
       return {
         origin: principal.origin,
@@ -1143,7 +1142,7 @@ export class ZenMcpDataTools {
         : originAttributes(args.originAttributes);
     const principal = args.origin === undefined ? null : this.principal(args);
     const items = Array.from(Services.perms.all).filter(
-      (value) =>
+      value =>
         !value.principal.originAttributes.privateBrowsingId &&
         (!principal || value.principal.origin === principal.origin) &&
         (args.permission === undefined || value.type === args.permission) &&
@@ -1151,13 +1150,13 @@ export class ZenMcpDataTools {
           Object.entries(attrs).every(
             ([key, valueAttr]) =>
               (value.principal.originAttributes[key] ??
-                (typeof valueAttr === "number" ? 0 : "")) === valueAttr,
-          )),
+                (typeof valueAttr === "number" ? 0 : "")) === valueAttr
+          ))
     );
     const slice = paginate(items, args);
     return {
       ...slice,
-      items: slice.items.map((value) => ({
+      items: slice.items.map(value => ({
         origin: value.principal.origin,
         permission: value.type,
         state: value.capability,
@@ -1175,31 +1174,31 @@ export class ZenMcpDataTools {
     requireValue(
       api.listPermissions().includes(permission),
       "unknown_permission",
-      "Unsupported site permission",
+      "Unsupported site permission"
     );
     if (args.action === "set") {
       requireValue(
         api.getAvailableStates(permission).includes(args.state),
         "invalid_permission_state",
-        "State is not supported for this permission",
+        "State is not supported for this permission"
       );
       requireValue(
         args.scope === undefined ||
           ["persistent", "session"].includes(args.scope),
         "invalid_argument",
-        "Invalid permission scope",
+        "Invalid permission scope"
       );
       api.setForPrincipal(
         principal,
         permission,
         args.state,
-        args.scope === "session" ? api.SCOPE_SESSION : api.SCOPE_PERSISTENT,
+        args.scope === "session" ? api.SCOPE_SESSION : api.SCOPE_PERSISTENT
       );
     } else {
       requireValue(
         args.action === "remove",
         "invalid_action",
-        "Unknown permission action",
+        "Unknown permission action"
       );
       api.removeFromPrincipal(principal, permission);
     }
@@ -1246,7 +1245,7 @@ export class ZenMcpDataTools {
     const slice = paginate(names, args);
     return {
       ...slice,
-      items: slice.items.map((name) => this.preference(name)),
+      items: slice.items.map(name => this.preference(name)),
     };
   }
 
@@ -1256,21 +1255,21 @@ export class ZenMcpDataTools {
     requireValue(
       !prefs.prefIsLocked(name),
       "locked_preference",
-      "This preference is locked",
+      "This preference is locked"
     );
     if (args.action === "set") {
       const existing = this.preference(name);
       requireValue(
         !existing.exists || existing.type === args.type,
         "preference_type_mismatch",
-        "Use the existing preference type",
+        "Use the existing preference type"
       );
       switch (args.type) {
         case "boolean":
           requireValue(
             typeof args.value === "boolean",
             "invalid_argument",
-            "value must be boolean",
+            "value must be boolean"
           );
           prefs.setBoolPref(name, args.value);
           break;
@@ -1278,7 +1277,7 @@ export class ZenMcpDataTools {
           requireValue(
             typeof args.value === "string",
             "invalid_argument",
-            "value must be a string",
+            "value must be a string"
           );
           prefs.setStringPref(name, args.value);
           break;
@@ -1288,21 +1287,21 @@ export class ZenMcpDataTools {
               args.value >= -2147483648 &&
               args.value <= 2147483647,
             "invalid_argument",
-            "value must be a 32-bit signed integer",
+            "value must be a 32-bit signed integer"
           );
           prefs.setIntPref(name, args.value);
           break;
         default:
           throw new McpToolError(
             "invalid_argument",
-            "type must be boolean, integer or string",
+            "type must be boolean, integer or string"
           );
       }
     } else {
       requireValue(
         args.action === "reset",
         "invalid_action",
-        "Unknown preference action",
+        "Unknown preference action"
       );
       prefs.clearUserPref(name);
     }

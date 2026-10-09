@@ -15,7 +15,7 @@ var gZenMcpSettings = {
 
   _getService() {
     this._service ??= ChromeUtils.importESModule(
-      "resource:///modules/zen/mcp/ZenMcpService.sys.mjs",
+      "resource:///modules/zen/mcp/ZenMcpService.sys.mjs"
     ).ZenMcpService;
     return this._service;
   },
@@ -80,13 +80,13 @@ var gZenMcpSettings = {
       const enabled = this._element("zenMcpEnabled").checked;
       void this._runOperation(
         () => this._getService().setEnabled(enabled),
-        "zen-mcp-error-enable",
+        "zen-mcp-error-enable"
       );
     });
     this._listen(this._element("zenMcpPort"), "input", () => {
       this._portDirty = true;
     });
-    this._listen(this._element("zenMcpPort"), "keydown", (event) => {
+    this._listen(this._element("zenMcpPort"), "keydown", event => {
       if (event.key === "Enter") {
         event.preventDefault();
         void this._applyPort();
@@ -98,19 +98,19 @@ var gZenMcpSettings = {
     this._listen(this._element("zenMcpAddClient"), "command", () => {
       void this._createClient();
     });
-    this._listen(this._element("zenMcpClientName"), "keydown", (event) => {
+    this._listen(this._element("zenMcpClientName"), "keydown", event => {
       if (event.key === "Enter") {
         event.preventDefault();
         void this._createClient();
       }
     });
-    this._listen(this._element("zenMcpClientsList"), "command", (event) => {
+    this._listen(this._element("zenMcpClientsList"), "command", event => {
       const button = event.target.closest("[data-mcp-client-action]");
       if (!button || !this._element("zenMcpClientsList").contains(button)) {
         return;
       }
       const id = button.getAttribute("data-client-id");
-      if (!this._status?.clients.some((client) => client.id === id)) {
+      if (!this._status?.clients.some(client => client.id === id)) {
         return;
       }
       if (button.getAttribute("data-mcp-client-action") === "rotate") {
@@ -128,7 +128,7 @@ var gZenMcpSettings = {
         () => {
           this._ready = true;
         },
-        true,
+        true
       );
     });
     this._listen(this._element("zenMcpCopyEndpoint"), "command", () => {
@@ -150,7 +150,7 @@ var gZenMcpSettings = {
     this._listen(this._element("zenMcpDismissGrant"), "command", () => {
       this._clearGrant();
     });
-    this._listen(document, "paneshown", (event) => {
+    this._listen(document, "paneshown", event => {
       this._active = event.detail.category === "paneZenMcp";
       if (!this._active) {
         this._clearGrant();
@@ -239,7 +239,7 @@ var gZenMcpSettings = {
           name,
           createdAt,
           lastUsedAt,
-        }),
+        })
       ),
     };
     this._renderStatus();
@@ -248,28 +248,27 @@ var gZenMcpSettings = {
   _renderStatus() {
     const status = this._status;
     this._element("zenMcpEnabled").checked = status.enabled;
-    document.l10n.setAttributes(
-      this._element("zenMcpStatus"),
-      status.running
-        ? "zen-mcp-status-running"
-        : status.enabled
-          ? "zen-mcp-status-stopped"
-          : "zen-mcp-status-disabled",
-    );
+    let statusId = "zen-mcp-status-disabled";
+    if (status.running) {
+      statusId = "zen-mcp-status-running";
+    } else if (status.enabled) {
+      statusId = "zen-mcp-status-stopped";
+    }
+    document.l10n.setAttributes(this._element("zenMcpStatus"), statusId);
     document.l10n.setAttributes(
       this._element("zenMcpInstance"),
       status.kind === "playground"
         ? "zen-mcp-instance-playground"
-        : "zen-mcp-instance-main",
+        : "zen-mcp-instance-main"
     );
     document.l10n.setAttributes(
       this._element("zenMcpPortHint"),
       "zen-mcp-port-hint",
-      { port: status.defaultPort },
+      { port: status.defaultPort }
     );
     if (!this._portDirty) {
       this._element("zenMcpPort").value = String(
-        status.port || status.defaultPort,
+        status.port || status.defaultPort
       );
     }
     this._element("zenMcpEndpoint").value = status.endpoint || "";
@@ -278,13 +277,13 @@ var gZenMcpSettings = {
       document.l10n.setAttributes(
         this._element("zenMcpServerError"),
         "zen-mcp-server-error",
-        { error: String(status.error) },
+        { error: String(status.error) }
       );
     }
     if (
       this._grant &&
       (this._grant.endpoint !== status.endpoint ||
-        !status.clients.some((client) => client.id === this._grant.clientId))
+        !status.clients.some(client => client.id === this._grant.clientId))
     ) {
       this._clearGrant();
     }
@@ -293,8 +292,10 @@ var gZenMcpSettings = {
   },
 
   _date(value) {
-    const date =
-      typeof value === "number" ? value : value ? Date.parse(value) : NaN;
+    let date = value;
+    if (typeof value !== "number") {
+      date = value ? Date.parse(value) : NaN;
+    }
     return Number.isFinite(date) && date > 0 ? date : null;
   },
 
@@ -324,7 +325,7 @@ var gZenMcpSettings = {
       document.l10n.setAttributes(
         created,
         createdAt ? "zen-mcp-client-created" : "zen-mcp-client-created-unknown",
-        createdAt ? { createdAt } : undefined,
+        createdAt ? { createdAt } : undefined
       );
       row.appendChild(created);
       const used = document.createXULElement("description");
@@ -333,14 +334,13 @@ var gZenMcpSettings = {
       document.l10n.setAttributes(
         used,
         lastUsedAt ? "zen-mcp-client-last-used" : "zen-mcp-client-unused",
-        lastUsedAt ? { lastUsedAt } : undefined,
+        lastUsedAt ? { lastUsedAt } : undefined
       );
       row.appendChild(used);
       fragment.appendChild(row);
     }
     this._element("zenMcpClientsList").replaceChildren(fragment);
-    this._element("zenMcpClientsEmpty").hidden =
-      this._status.clients.length > 0;
+    this._element("zenMcpClientsEmpty").hidden = !!this._status.clients.length;
   },
 
   _updateDisabled() {
@@ -355,7 +355,7 @@ var gZenMcpSettings = {
       this._element(id).disabled = disabled;
     }
     for (const button of this._element("zenMcpClientsList").querySelectorAll(
-      "button",
+      "button"
     )) {
       button.disabled = disabled;
     }
@@ -371,7 +371,7 @@ var gZenMcpSettings = {
     operation,
     errorId,
     onSuccess = null,
-    allowUnready = false,
+    allowUnready = false
   ) {
     if (this._disposed || this._busy || (!this._ready && !allowUnready)) {
       return;
@@ -439,7 +439,13 @@ var gZenMcpSettings = {
       return;
     }
     const name = this._element("zenMcpClientName").value.trim();
-    if (!name || name.length > 100 || /[\u0000-\u001f\u007f]/.test(name)) {
+    if (
+      !name ||
+      name.length > 100 ||
+      Array.from(name).some(
+        char => char.charCodeAt(0) < 32 || char === "\u007f"
+      )
+    ) {
       this._setError("zen-mcp-error-name");
       this._element("zenMcpClientName").focus();
       return;
@@ -454,7 +460,7 @@ var gZenMcpSettings = {
       "zen-mcp-error-create",
       () => {
         this._element("zenMcpClientName").value = "";
-      },
+      }
     );
   },
 
@@ -469,7 +475,7 @@ var gZenMcpSettings = {
       "rotate",
       id,
       () => this._getService().rotateClient(id),
-      "zen-mcp-error-rotate",
+      "zen-mcp-error-rotate"
     );
   },
 
@@ -505,7 +511,7 @@ var gZenMcpSettings = {
       observed: false,
     });
     try {
-      await this._runOperation(operation, errorId, (result) => {
+      await this._runOperation(operation, errorId, result => {
         onSuccess?.();
         if (this._active && epoch === this._grantEpoch) {
           this._showGrant(result);
@@ -525,7 +531,7 @@ var gZenMcpSettings = {
     this._clearGrant();
     await this._runOperation(
       () => this._getService().revokeClient(id),
-      "zen-mcp-error-revoke",
+      "zen-mcp-error-revoke"
     );
   },
 
@@ -536,7 +542,7 @@ var gZenMcpSettings = {
       !result.token ||
       typeof result.endpoint !== "string" ||
       result.endpoint !== this._status.endpoint ||
-      !this._status.clients.some((client) => client.id === result.client.id)
+      !this._status.clients.some(client => client.id === result.client.id)
     ) {
       throw new Error("Invalid client grant response");
     }
@@ -564,7 +570,7 @@ var gZenMcpSettings = {
     document.l10n.setAttributes(
       this._element("zenMcpGrantHeading"),
       "zen-mcp-grant-heading",
-      { name: result.client.name },
+      { name: result.client.name }
     );
     this._element("zenMcpToken").value = result.token;
     this._element("zenMcpJsonConfig").value = json;
@@ -599,7 +605,7 @@ var gZenMcpSettings = {
       this._element("zenMcpOperationError").hidden = true;
       document.l10n.setAttributes(
         this._element("zenMcpFeedback"),
-        "zen-mcp-copied",
+        "zen-mcp-copied"
       );
       this._element("zenMcpFeedback").hidden = false;
     } catch {
