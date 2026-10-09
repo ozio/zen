@@ -67,6 +67,8 @@ The actual daily settings UI enabled MCP at `http://127.0.0.1:3923/mcp` and crea
 
 The installed main server then passed seven live checks: exact build/PID/instance and 49 tools, 16-page tab listing, mutual rejection of main/Playground bearer grants, owned page navigation/snapshot/trusted click/page JS, full system JS, explicit-target console/network and resource subscriptions, owned-target cleanup with all prior tab IDs/order preserved, and hash-only credentials/payload-free audit. The prior selected tab was restored. During these probes ChatGPT's crash stopped the fixture server; it was restarted before a new owned-target test. A failed navigation was inspected and its owned tab closed, without replaying the action.
 
+The final delivery check later found the main process stopped; its cause was not inferred, and no matching crash report was found. A normal launch restored the enabled server and the same previously issued bearer grant without recreating access. The instance/PID changed, and all seven main MCP checks, personal-session preservation, extension state, FoxPilot routing and post-launch signature passed again. Initial and restarted receipts are retained separately.
+
 ## Retained package, rollback and evidence
 
 Run the retained candidate from its own root with the primary managed toolchains, after gracefully stopping only the current Playground:
