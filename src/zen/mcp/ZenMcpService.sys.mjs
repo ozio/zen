@@ -20,6 +20,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   ZenMcpBrowserTools: "resource:///modules/zen/mcp/ZenMcpBrowserTools.sys.mjs",
   ZenMcpPageTools: "resource:///modules/zen/mcp/ZenMcpPageTools.sys.mjs",
+  createAgentSetup: "resource:///modules/zen/mcp/ZenMcpAgentSetup.sys.mjs",
 });
 const MAX_BODY = 4 * 1024 * 1024;
 const ENABLED = "zen.mcp.enabled";
@@ -340,6 +341,18 @@ class ZenMcpServiceImpl {
     await this.credentials.revoke(id);
     this.changed("clients:revoke", id);
     return this.getStatus();
+  }
+
+  async connectAgent(agent) {
+    await this.init();
+    this.agentSetup ??= lazy.createAgentSetup(this, sha256, uuid);
+    return this.agentSetup.connect(agent);
+  }
+
+  async installAgentSkill(agent) {
+    await this.init();
+    this.agentSetup ??= lazy.createAgentSetup(this, sha256, uuid);
+    return this.agentSetup.installSkill(agent);
   }
 
   hasClient(id) {

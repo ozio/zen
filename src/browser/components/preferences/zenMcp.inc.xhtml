@@ -13,6 +13,7 @@
     <description class="description-deemphasized" data-l10n-id="zen-mcp-description"/>
     <description data-l10n-id="zen-mcp-privileged-disclosure"/>
     <checkbox id="zenMcpEnabled" data-l10n-id="zen-mcp-enabled" disabled="true"/>
+    <description class="description-deemphasized" data-l10n-id="zen-mcp-startup-description"/>
 
     <html:p id="zenMcpStatus" role="status" aria-live="polite" data-l10n-id="zen-mcp-status-unavailable"/>
     <description id="zenMcpInstance" class="description-deemphasized"/>
@@ -32,6 +33,23 @@
                   style="flex: 1; min-width: 0;"/>
       <button id="zenMcpCopyEndpoint" data-l10n-id="zen-mcp-copy-endpoint" disabled="true"/>
       <button id="zenMcpRefresh" data-l10n-id="zen-mcp-refresh" disabled="true"/>
+    </hbox>
+  </groupbox>
+
+  <groupbox id="zenMcpAgentsGroup" data-category="paneZenMcp" hidden="true" class="highlighting-group">
+    <label><html:h2 data-l10n-id="zen-mcp-agents-heading"/></label>
+    <description data-l10n-id="zen-mcp-agents-description"/>
+    <hbox align="center" flex="1">
+      <button id="zenMcpConnectCodex" data-l10n-id="zen-mcp-connect-codex" disabled="true"/>
+      <button id="zenMcpConnectClaude" data-l10n-id="zen-mcp-connect-claude" disabled="true"/>
+    </hbox>
+    <description class="description-deemphasized" data-l10n-id="zen-mcp-agents-manual-description"/>
+    <html:h3 data-l10n-id="zen-mcp-skills-heading"/>
+    <description class="description-deemphasized" data-l10n-id="zen-mcp-skills-description"/>
+    <hbox align="center">
+      <button id="zenMcpInstallCodexSkill" data-l10n-id="zen-mcp-install-codex-skill" disabled="true"/>
+      <button id="zenMcpInstallClaudeSkill" data-l10n-id="zen-mcp-install-claude-skill" disabled="true"/>
+      <button id="zenMcpOpenCodexSkills" data-l10n-id="zen-mcp-open-codex-skills" disabled="true"/>
     </hbox>
   </groupbox>
 
@@ -61,6 +79,13 @@
       <html:label for="zenMcpCodexConfig" data-l10n-id="zen-mcp-codex-config-label"/>
       <html:textarea id="zenMcpCodexConfig" rows="6" readonly="readonly" autocomplete="off" spellcheck="false" dir="ltr"/>
       <hbox><button id="zenMcpCopyCodex" data-l10n-id="zen-mcp-copy-codex" disabled="true"/></hbox>
+      <html:label for="zenMcpCodexCommand" data-l10n-id="zen-mcp-codex-command-label"/>
+      <html:textarea id="zenMcpCodexCommand" rows="3" readonly="readonly" autocomplete="off" spellcheck="false" dir="ltr"/>
+      <description class="description-deemphasized" data-l10n-id="zen-mcp-codex-command-description"/>
+      <hbox><button id="zenMcpCopyCodexCommand" data-l10n-id="zen-mcp-copy-codex-command" disabled="true"/></hbox>
+      <html:label for="zenMcpClaudeCommand" data-l10n-id="zen-mcp-claude-command-label"/>
+      <html:textarea id="zenMcpClaudeCommand" rows="3" readonly="readonly" autocomplete="off" spellcheck="false" dir="ltr"/>
+      <hbox><button id="zenMcpCopyClaudeCommand" data-l10n-id="zen-mcp-copy-claude-command" disabled="true"/></hbox>
       <hbox><button id="zenMcpDismissGrant" data-l10n-id="zen-mcp-dismiss-grant"/></hbox>
     </vbox>
   </groupbox>

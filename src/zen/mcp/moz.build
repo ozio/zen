@@ -3,6 +3,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXTRA_JS_MODULES.zen.mcp += [
+    "skills/zen-browser/SKILL.md",
+    "ZenMcpAgentConfig.sys.mjs",
+    "ZenMcpAgentSetup.sys.mjs",
     "ZenMcpBrowserTools.sys.mjs",
     "ZenMcpCredentials.sys.mjs",
     "ZenMcpDataTools.sys.mjs",

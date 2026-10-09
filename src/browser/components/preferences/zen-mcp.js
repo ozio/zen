@@ -136,10 +136,33 @@ var gZenMcpSettings = {
         this._copy(this._status.endpoint);
       }
     });
+    for (const [agent, suffix] of [["codex", "Codex"], ["claude", "Claude"]]) {
+      this._listen(this._element(`zenMcpConnect${suffix}`), "command", () => {
+        void this._connectAgent(agent);
+      });
+      this._listen(this._element(`zenMcpInstall${suffix}Skill`), "command", () => {
+        void this._runOperation(
+          () => this._getService().installAgentSkill(agent),
+          "zen-mcp-error-install-skill",
+          result => this._feedback("zen-mcp-skill-installed", { path: result.installedPath })
+        );
+      });
+    }
+    this._listen(this._element("zenMcpOpenCodexSkills"), "command", () => {
+      try {
+        Cc["@mozilla.org/uriloader/external-protocol-service;1"]
+          .getService(Ci.nsIExternalProtocolService)
+          .loadURI(Services.io.newURI("codex://skills"));
+      } catch {
+        this._setError("zen-mcp-error-open-codex");
+      }
+    });
     for (const [id, property] of [
       ["zenMcpCopyToken", "token"],
       ["zenMcpCopyJson", "json"],
       ["zenMcpCopyCodex", "codex"],
+      ["zenMcpCopyCodexCommand", "codexCommand"],
+      ["zenMcpCopyClaudeCommand", "claudeCommand"],
     ]) {
       this._listen(this._element(id), "command", () => {
         if (this._grant && !this._busy) {
@@ -351,6 +374,11 @@ var gZenMcpSettings = {
       "zenMcpApplyPort",
       "zenMcpClientName",
       "zenMcpAddClient",
+      "zenMcpConnectCodex",
+      "zenMcpConnectClaude",
+      "zenMcpInstallCodexSkill",
+      "zenMcpInstallClaudeSkill",
+      "zenMcpOpenCodexSkills",
     ]) {
       this._element(id).disabled = disabled;
     }
@@ -362,7 +390,7 @@ var gZenMcpSettings = {
     this._element("zenMcpRefresh").disabled = this._disposed || this._busy;
     this._element("zenMcpCopyEndpoint").disabled =
       disabled || !this._status?.endpoint;
-    for (const id of ["zenMcpCopyToken", "zenMcpCopyJson", "zenMcpCopyCodex"]) {
+    for (const id of ["zenMcpCopyToken", "zenMcpCopyJson", "zenMcpCopyCodex", "zenMcpCopyCodexCommand", "zenMcpCopyClaudeCommand"]) {
       this._element(id).disabled = this._disposed || this._busy || !this._grant;
     }
   },
@@ -479,6 +507,24 @@ var gZenMcpSettings = {
     );
   },
 
+  async _connectAgent(agent) {
+    if (this._busy || !this._ready || this._disposed || !(await this._activateForGrant())) {
+      return;
+    }
+    this._clearGrant();
+    const epoch = this._grantEpoch;
+    await this._runOperation(
+      () => this._getService().connectAgent(agent),
+      agent === "codex" ? "zen-mcp-error-connect-codex" : "zen-mcp-error-connect-claude",
+      result => {
+        if (this._active && epoch === this._grantEpoch) {
+          this._showGrant(result);
+        }
+        this._feedback("zen-mcp-agent-connected", { path: result.installedPath });
+      }
+    );
+  },
+
   async _activateForGrant() {
     const lifecycle = this._lifecycle;
     if (!this._active && typeof gotoPref === "function") {
@@ -546,26 +592,15 @@ var gZenMcpSettings = {
     ) {
       throw new Error("Invalid client grant response");
     }
-    const json =
-      typeof result.configText === "string"
-        ? result.configText
-        : JSON.stringify(result.config, null, 2);
-    if (!json) {
-      throw new Error("Missing client connection configuration");
-    }
-    const serverName =
-      this._status.kind === "playground" ? "zen_playground" : "zen";
-    // Codex accepts static HTTP headers in config.toml:
-    // https://developers.openai.com/codex/mcp#streamable-http-servers
-    const codex =
-      `[mcp_servers.${serverName}]\nurl = ${JSON.stringify(result.endpoint)}\n\n` +
-      `[mcp_servers.${serverName}.http_headers]\nAuthorization = ${JSON.stringify(`Bearer ${result.token}`)}\n`;
+    const { agentConnection } = ChromeUtils.importESModule(
+      "resource:///modules/zen/mcp/ZenMcpAgentConfig.sys.mjs"
+    );
+    const connection = agentConnection(result, this._status.kind);
     this._grant = {
       clientId: result.client.id,
       endpoint: result.endpoint,
       token: result.token,
-      json,
-      codex,
+      ...connection,
     };
     document.l10n.setAttributes(
       this._element("zenMcpGrantHeading"),
@@ -573,8 +608,10 @@ var gZenMcpSettings = {
       { name: result.client.name }
     );
     this._element("zenMcpToken").value = result.token;
-    this._element("zenMcpJsonConfig").value = json;
-    this._element("zenMcpCodexConfig").value = codex;
+    this._element("zenMcpJsonConfig").value = connection.json;
+    this._element("zenMcpCodexConfig").value = connection.codex;
+    this._element("zenMcpCodexCommand").value = connection.codexCommand;
+    this._element("zenMcpClaudeCommand").value = connection.claudeCommand;
     this._element("zenMcpGrant").hidden = false;
     this._updateDisabled();
   },
@@ -582,7 +619,7 @@ var gZenMcpSettings = {
   _clearGrant() {
     ++this._grantEpoch;
     this._grant = null;
-    for (const id of ["zenMcpToken", "zenMcpJsonConfig", "zenMcpCodexConfig"]) {
+    for (const id of ["zenMcpToken", "zenMcpJsonConfig", "zenMcpCodexConfig", "zenMcpCodexCommand", "zenMcpClaudeCommand"]) {
       const element = this._element(id);
       if (element) {
         element.value = "";
@@ -603,14 +640,15 @@ var gZenMcpSettings = {
         .getService(Ci.nsIClipboardHelper)
         .copyString(text);
       this._element("zenMcpOperationError").hidden = true;
-      document.l10n.setAttributes(
-        this._element("zenMcpFeedback"),
-        "zen-mcp-copied"
-      );
-      this._element("zenMcpFeedback").hidden = false;
+      this._feedback("zen-mcp-copied");
     } catch {
       this._setError("zen-mcp-error-copy");
     }
+  },
+
+  _feedback(id, args) {
+    document.l10n.setAttributes(this._element("zenMcpFeedback"), id, args);
+    this._element("zenMcpFeedback").hidden = false;
   },
 
   _setError(id) {

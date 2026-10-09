@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { agentConnection } from "../../src/zen/mcp/ZenMcpAgentConfig.sys.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const prefRoot = "src/browser/components/preferences/";
@@ -230,6 +231,14 @@ function harness({ kind = "main", category = "paneZenMcp" } = {}) {
       status.clients = status.clients.filter((client) => client.id !== id);
       notify({ kind: "clients:revoke", clientId: id });
     },
+    async connectAgent(agent) {
+      calls.push(["connectAgent", agent]);
+      return { ...await service.addClient(agent), installedPath: "/synthetic/client-config" };
+    },
+    async installAgentSkill(agent) {
+      calls.push(["installAgentSkill", agent]);
+      return { installedPath: "/synthetic/skills/SKILL.md" };
+    },
   };
   const context = vm.createContext({
     document,
@@ -237,6 +246,9 @@ function harness({ kind = "main", category = "paneZenMcp" } = {}) {
     gLastCategory: { category },
     ChromeUtils: {
       importESModule(url) {
+        if (url === "resource:///modules/zen/mcp/ZenMcpAgentConfig.sys.mjs") {
+          return { agentConnection };
+        }
         assert.equal(url, "resource:///modules/zen/mcp/ZenMcpService.sys.mjs");
         return { ZenMcpService: service };
       },
@@ -305,9 +317,9 @@ function harness({ kind = "main", category = "paneZenMcp" } = {}) {
   const assertCleared = () => {
     assert.equal(pane._grant, null);
     assert.equal(element("zenMcpGrant").hidden, true);
-    for (const id of ["zenMcpToken", "zenMcpJsonConfig", "zenMcpCodexConfig"])
+    for (const id of ["zenMcpToken", "zenMcpJsonConfig", "zenMcpCodexConfig", "zenMcpCodexCommand", "zenMcpClaudeCommand"])
       assert.equal(element(id).value, "");
-    for (const id of ["zenMcpCopyToken", "zenMcpCopyJson", "zenMcpCopyCodex"])
+    for (const id of ["zenMcpCopyToken", "zenMcpCopyJson", "zenMcpCopyCodex", "zenMcpCopyCodexCommand", "zenMcpCopyClaudeCommand"])
       assert.equal(element(id).disabled, true);
   };
   return {
@@ -533,7 +545,7 @@ test("client creation shows a one-time token and copies exact JSON and Codex TOM
   );
   await h.command("zenMcpCopyJson");
   assert.equal(
-    JSON.parse(h.clipboard[0]).mcpServers.zen.headers.Authorization,
+    JSON.parse(h.clipboard[0]).mcpServers.zen_playground.headers.Authorization,
     "Bearer synthetic-token-1",
   );
   await h.command("zenMcpCopyCodex");
@@ -550,6 +562,41 @@ test("client creation shows a one-time token and copies exact JSON and Codex TOM
   assert.deepEqual(h.logs, []);
 });
 
+test("agent buttons install separate connections and token-free skills without enabling the server", async () => {
+  const h = harness();
+  await h.pane.init();
+  await h.command("zenMcpConnectCodex");
+  assert.equal(h.pane._grant.clientId, h.status.clients[0].id);
+  await h.command("zenMcpCopyCodexCommand");
+  assert.match(h.clipboard[0], /--bearer-token-env-var ZEN_MCP_TOKEN/);
+  await h.command("zenMcpConnectClaude");
+  assert.equal(h.status.clients.length, 2);
+  assert.equal(h.pane._grant.clientId, h.status.clients[1].id);
+  await h.command("zenMcpCopyClaudeCommand");
+  assert.match(h.clipboard[1], /claude mcp add --transport http --scope user zen /);
+  await h.command("zenMcpInstallCodexSkill");
+  await h.command("zenMcpInstallClaudeSkill");
+  assert.deepEqual(h.calls.filter(([method]) => method === "installAgentSkill"), [["installAgentSkill", "codex"], ["installAgentSkill", "claude"]]);
+  assert.equal(h.status.enabled, false);
+  assert.equal(h.element("zenMcpEnabled").checked, false);
+  await h.command("zenMcpDismissGrant");
+  h.assertCleared();
+  assert.deepEqual(h.logs, []);
+});
+
+test("leaving and returning during agent installation does not redisplay the one-time token", async () => {
+  const h = harness();
+  const pending = deferred();
+  h.service.connectAgent = () => pending.promise;
+  await h.pane.init();
+  await h.command("zenMcpConnectCodex");
+  h.document.dispatch("paneshown", { detail: { category: "paneGeneral" } });
+  h.document.dispatch("paneshown", { detail: { category: "paneZenMcp" } });
+  pending.resolve({ ...await h.service.addClient("Codex"), installedPath: "/synthetic/config" });
+  await flush();
+  h.assertCleared();
+});
+
 test("configuration strings escape tokens and the UI never retains extra credential status fields", async () => {
   const h = harness();
   h.service.getStatus = () => ({
@@ -557,7 +604,7 @@ test("configuration strings escape tokens and the UI never retains extra credent
     token: "unexpected-status-secret",
   });
   const original = h.service.addClient;
-  const token = 'synthetic"token\\line\n[injected]';
+  const token = 'synthetic"token\\line\'[injected]';
   h.service.addClient = async (name) => {
     const result = await original(name);
     result.token = token;
