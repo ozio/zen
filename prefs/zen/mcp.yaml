@@ -1,0 +1,10 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+- name: zen.mcp.enabled
+  value: false
+
+# Zero selects 3923 for main and 3924 for the isolated Playground profile.
+- name: zen.mcp.port
+  value: 0

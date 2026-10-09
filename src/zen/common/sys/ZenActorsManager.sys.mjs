@@ -19,6 +19,18 @@ let JSPROCESSACTORS = {};
  * available at https://firefox-source-docs.mozilla.org/dom/ipc/jsactors.html
  */
 let JSWINDOWACTORS = {
+  ZenMcp: {
+    parent: {
+      esModuleURI: "resource:///actors/ZenMcpParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "resource:///actors/ZenMcpChild.sys.mjs",
+    },
+    allFrames: true,
+    includeChrome: false,
+    safeForUntrustedWebProcess: true,
+    enablePreference: "zen.mcp.enabled",
+  },
   ZenModsMarketplace: {
     parent: {
       esModuleURI: "resource:///actors/ZenModsMarketplaceParent.sys.mjs",

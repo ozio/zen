@@ -1,0 +1,72 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+<script type="text/javascript" src="chrome://browser/content/preferences/zen-mcp.js"/>
+<html:template id="template-paneZenMcp">
+  <hbox id="zenMcpCategory" class="subcategory" hidden="true" data-category="paneZenMcp">
+    <html:h1 data-l10n-id="pane-zen-mcp-title"/>
+  </hbox>
+
+  <groupbox id="zenMcpServerGroup" data-category="paneZenMcp" hidden="true" class="highlighting-group">
+    <label><html:h2 data-l10n-id="zen-mcp-server-heading"/></label>
+    <description class="description-deemphasized" data-l10n-id="zen-mcp-description"/>
+    <description data-l10n-id="zen-mcp-privileged-disclosure"/>
+    <checkbox id="zenMcpEnabled" data-l10n-id="zen-mcp-enabled" disabled="true"/>
+
+    <html:p id="zenMcpStatus" role="status" aria-live="polite" data-l10n-id="zen-mcp-status-unavailable"/>
+    <description id="zenMcpInstance" class="description-deemphasized"/>
+    <description id="zenMcpServerError" role="alert" hidden="true"/>
+
+    <hbox align="center">
+      <html:label for="zenMcpPort" data-l10n-id="zen-mcp-port-label"/>
+      <html:input id="zenMcpPort" type="number" min="1" max="65535" step="1" inputmode="numeric"
+                  autocomplete="off" aria-describedby="zenMcpPortHint" style="width: 8em; margin-inline: 8px;" disabled="true"/>
+      <button id="zenMcpApplyPort" data-l10n-id="zen-mcp-apply-port" disabled="true"/>
+    </hbox>
+    <description id="zenMcpPortHint" class="description-deemphasized"/>
+
+    <html:label for="zenMcpEndpoint" data-l10n-id="zen-mcp-endpoint-label"/>
+    <hbox align="center">
+      <html:input id="zenMcpEndpoint" type="text" readonly="readonly" autocomplete="off" dir="ltr"
+                  style="flex: 1; min-width: 0;"/>
+      <button id="zenMcpCopyEndpoint" data-l10n-id="zen-mcp-copy-endpoint" disabled="true"/>
+      <button id="zenMcpRefresh" data-l10n-id="zen-mcp-refresh" disabled="true"/>
+    </hbox>
+  </groupbox>
+
+  <groupbox id="zenMcpClientsGroup" data-category="paneZenMcp" hidden="true" class="highlighting-group">
+    <label><html:h2 data-l10n-id="zen-mcp-clients-heading"/></label>
+    <description class="description-deemphasized" data-l10n-id="zen-mcp-clients-description"/>
+    <html:label for="zenMcpClientName" data-l10n-id="zen-mcp-client-name-label"/>
+    <hbox align="center">
+      <html:input id="zenMcpClientName" type="text" maxlength="100" autocomplete="off"
+                  style="flex: 1; min-width: 0;" disabled="true"/>
+      <button id="zenMcpAddClient" data-l10n-id="zen-mcp-add-client" disabled="true"/>
+    </hbox>
+    <description id="zenMcpClientsEmpty" class="description-deemphasized" data-l10n-id="zen-mcp-clients-empty"/>
+    <vbox id="zenMcpClientsList"/>
+
+    <vbox id="zenMcpGrant" hidden="true" class="indent" aria-labelledby="zenMcpGrantHeading">
+      <html:h3 id="zenMcpGrantHeading"/>
+      <description data-l10n-id="zen-mcp-grant-description"/>
+      <html:label for="zenMcpToken" data-l10n-id="zen-mcp-token-label"/>
+      <html:textarea id="zenMcpToken" rows="2" readonly="readonly" autocomplete="off" spellcheck="false" dir="ltr"/>
+      <hbox><button id="zenMcpCopyToken" data-l10n-id="zen-mcp-copy-token" disabled="true"/></hbox>
+
+      <html:label for="zenMcpJsonConfig" data-l10n-id="zen-mcp-json-config-label"/>
+      <html:textarea id="zenMcpJsonConfig" rows="8" readonly="readonly" autocomplete="off" spellcheck="false" dir="ltr"/>
+      <hbox><button id="zenMcpCopyJson" data-l10n-id="zen-mcp-copy-json" disabled="true"/></hbox>
+
+      <html:label for="zenMcpCodexConfig" data-l10n-id="zen-mcp-codex-config-label"/>
+      <html:textarea id="zenMcpCodexConfig" rows="6" readonly="readonly" autocomplete="off" spellcheck="false" dir="ltr"/>
+      <hbox><button id="zenMcpCopyCodex" data-l10n-id="zen-mcp-copy-codex" disabled="true"/></hbox>
+      <hbox><button id="zenMcpDismissGrant" data-l10n-id="zen-mcp-dismiss-grant"/></hbox>
+    </vbox>
+  </groupbox>
+
+  <groupbox id="zenMcpFeedbackGroup" data-category="paneZenMcp" hidden="true">
+    <description id="zenMcpOperationError" role="alert" hidden="true"/>
+    <description id="zenMcpFeedback" role="status" aria-live="polite" hidden="true"/>
+  </groupbox>
+</html:template>

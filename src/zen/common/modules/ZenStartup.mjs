@@ -99,6 +99,14 @@ class ZenStartup {
       this.promiseInitializedResolve();
       delete this.promiseInitializedResolve;
 
+      // A parent-process singleton watches the profile setting. The server is
+      // disabled by default and does not require remote-agent launch flags.
+      ChromeUtils.importESModule(
+        "resource:///modules/zen/mcp/ZenMcpService.sys.mjs"
+      ).ZenMcpService.init().catch(() => {
+        console.error("Zen MCP initialization failed");
+      });
+
       setTimeout(() => {
         // Wait for the natural PlacesToolbar rebuild before invalidating, so
         // the two async rebuilds don't interleave and duplicate bookmarks.
