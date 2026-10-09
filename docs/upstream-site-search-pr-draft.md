@@ -2,7 +2,7 @@
 
 **Статус: локальный рабочий текст, не разрешён для публикации.** Пользователь должен лично отредактировать title/body и согласовать конкретную отправку по [UPSTREAM_PR.md](../UPSTREAM_PR.md). Этот файл содержит также внутренние заметки; целиком передавать его в `--body-file` нельзя.
 
-Исходная личная реализация: `18d75652b931bc5e0d7cc850638fe8b15ed85307`. Исследованная upstream-база: `aa8f545346c1725bcd598c7ec86188793d423a67`. Чистый checkout `/Users/oz/Projects/zen-contrib` подготовлен напрямую из upstream. Публичный fork выбирается отдельно от `ozio/zen`; feature proposal ещё не перенесён и на этой базе не протестирован.
+Исходная личная реализация: `18d75652b931bc5e0d7cc850638fe8b15ed85307`. Правила исследованы на upstream `aa8f545346c1725bcd598c7ec86188793d423a67`. Публичный fork [`oziolabs/zen-contrib`](https://github.com/oziolabs/zen-contrib) и чистый checkout `/Users/oz/Projects/zen-contrib` подготовлены напрямую из upstream `3d7777adc270460bd475130f78e688ddd5e41765`. Feature proposal ещё не перенесён и на этой базе не протестирован; перед переносом выбрать свежую upstream-базу по [инструкции](../UPSTREAM_PR.md#порядок-переноса-одной-функции).
 
 ## Готовность и окончательный scope
 
@@ -73,7 +73,7 @@ Upstream browser-chrome regressions ещё не добавлены и не за�
 Последовательность завершения:
 
 1. Решить scope текущего name/alias поиска и желаемого domain trigger; сверить явные текущие правила проекта.
-2. В отдельном публичном fork создать `feature/tab-site-search` прямо от актуального `upstream/dev`; перенести минимальную реализацию без других personal hunks, backlog/TODO/status history и локальной инфраструктуры.
+2. В `oziolabs/zen-contrib` создать `feature/tab-site-search` прямо от актуального `upstream/dev`; перенести минимальную реализацию без других personal hunks, backlog/TODO/status history и локальной инфраструктуры.
 3. Добавить meaningful browser-chrome regressions; свежий import, upstream lint плюс affected Firefox lint и `npm test -- urlbar`; broader tests только по влиянию diff.
 4. Проверить native UI финального head в Playground; зафиксировать OS/SHA/commands и честные ограничения. Сохранить synthetic screenshot/ролик для review.
 5. Обновить этот черновик по фактическим результатам. Пользователь лично редактирует окончательные title/body; после согласования exact text и head/base и разрешения можно создать PR.

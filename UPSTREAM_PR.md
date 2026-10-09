@@ -1,6 +1,6 @@
 # Подготовка собственного pull request в Zen
 
-Эта инструкция описывает вклад из `ozio/zen` в `zen-browser/desktop`. Проверка чужого PR и перенос кода в личный fork описаны отдельно в [PR_WORKFLOW.md](PR_WORKFLOW.md). Публикация нашего PR требует лично отредактированного пользователем текста и его разрешения на конкретную отправку. Подготовка локального черновика такого разрешения не даёт.
+Эта инструкция описывает разработку в личном `ozio/zen` и отправку чистых изменений из публичного [`oziolabs/zen-contrib`](https://github.com/oziolabs/zen-contrib) в `zen-browser/desktop`. Проверка чужого PR и перенос кода в личный fork описаны отдельно в [PR_WORKFLOW.md](PR_WORKFLOW.md). Публикация нашего PR требует лично отредактированного пользователем текста и его разрешения на конкретную отправку. Подготовка локального черновика такого разрешения не даёт.
 
 Правила проверены **9 октября 2026, Asia/Tokyo**, по upstream `dev` на коммите [`aa8f545346c1725bcd598c7ec86188793d423a67`](https://github.com/zen-browser/desktop/commit/aa8f545346c1725bcd598c7ec86188793d423a67). Метаданные default branch, полные деревья основного и организационного репозиториев, исходники правил, CI и rulesets сохранены локально в `.zen-local/workflow-instructions/`. Перед реальной отправкой перечитать актуальные guidelines, templates, workflow, rulesets и состояние выбранной upstream-базы: этот документ не замораживает правила проекта.
 
@@ -32,12 +32,41 @@ DCO, CLA, обязательный `Signed-off-by`, минимальный пр�
 | Роль | Репозиторий / checkout | Правило |
 |---|---|---|
 | Личный ежедневный Zen | [`ozio/zen`](https://github.com/ozio/zen), `/Users/oz/Projects/Zen`, ветка `dev` | Здесь экспериментируем, ведём backlog и собираем ежедневную app. Его историю и remotes сохраняем. |
-| Публичные upstream contributions | План: отдельный fork `zen-contrib` в выбранной пользователем организации. Локальный upstream checkout уже готов: `/Users/oz/Projects/zen-contrib` | `dev` сохраняется как зеркало upstream; feature branches всегда начинаются от закреплённого `upstream/dev`. Личные коммиты сюда не переносятся. |
+| Публичные upstream contributions | [`oziolabs/zen-contrib`](https://github.com/oziolabs/zen-contrib), `/Users/oz/Projects/zen-contrib`, ветка `dev` | `dev` сохраняется как зеркало upstream; feature branches всегда начинаются от закреплённого `upstream/dev`. Личные коммиты сюда не переносятся. |
 | Источник базы | [`zen-browser/desktop`](https://github.com/zen-browser/desktop), `dev` | Фиксируем upstream SHA отдельно для каждого proposal. |
 
-GitHub не создал второй fork этой сети в `ozio`: API вернул существующий `ozio/zen`. Для отдельного настоящего fork требуется другой владелец; Пользователь выбрал создание новой организации, но имя `oz1o` уже занято личным аккаунтом; окончательное доступное имя ещё требуется. Создание remote пока не выполнено. Публичный fork нельзя сделать private отдельным переключателем — [GitHub: Forks](https://docs.github.com/en/pull-requests/reference/forks). Самостоятельное Leave fork network доступно только публичным forks меньше 1 ГБ без дочерних forks; наш больше этого ограничения. [GitHub: Detaching a fork](https://docs.github.com/en/pull-requests/how-tos/work-with-forks/detaching-a-fork).
+9 октября 2026 создана бесплатная организация [`oziolabs`](https://github.com/oziolabs); аккаунт пользователя имеет активную роль owner (`admin` в API). Её публичный `zen-contrib` — настоящий отдельный fork `zen-browser/desktop`, изначально только с веткой `dev`. При создании remote и чистый локальный checkout совпадают с upstream `3d7777adc270460bd475130f78e688ddd5e41765`. Это исходная отметка, не обещание, что upstream больше не менялся. Локальные receipts: `.zen-local/clean-contribution-fork/` в личном checkout.
+
+Remotes чистого checkout: `origin = https://github.com/oziolabs/zen-contrib.git`, `upstream = https://github.com/zen-browser/desktop.git`. Remotes личного checkout сохраняются отдельно: его `origin` — `ozio/zen`.
+
+GitHub вернул существующий `ozio/zen` при попытке создать второй fork этой сети в `ozio`, поэтому для отдельного fork используется организация. Публичный fork нельзя сделать private отдельным переключателем — [GitHub: Forks](https://docs.github.com/en/pull-requests/reference/forks). Самостоятельное Leave fork network доступно только публичным forks меньше 1 ГБ без дочерних forks; наш больше этого ограничения. [GitHub: Detaching a fork](https://docs.github.com/en/pull-requests/how-tos/work-with-forks/detaching-a-fork).
 
 Личный репозиторий пока остаётся public. Не удалять/пересоздавать его и не терять metadata ради приватности. При будущей отдельной миграции можно рассмотреть поддержку GitHub или самостоятельный private repository с сохранённой Git-историей; это требует конкретного решения, backup и проверки, а не скрытого изменения текущего origin. Уже опубликованные данные не считать задним числом приватными.
+
+### Обновление зеркала contribution fork
+
+В чистом checkout проверить status/remotes; продолжать только с чистым Git-состоянием. Получить обе ветки и убедиться, что `dev` и `origin/dev` не содержат коммитов вне upstream:
+
+```sh
+# Выполнять из /Users/oz/Projects/zen-contrib.
+git status --short
+git remote -v
+git fetch --no-tags upstream dev
+git fetch --no-tags origin dev
+git log --oneline upstream/dev..dev
+git log --oneline upstream/dev..origin/dev
+```
+
+Оба последних вывода должны быть пустыми. Если есть лишние коммиты или divergence, остановиться и рассмотреть их; не сбрасывать ветку и не force-push. Затем выполнить только fast-forward и обычный push зеркала:
+
+```sh
+git switch dev
+git merge --ff-only origin/dev
+git merge --ff-only upstream/dev
+git push origin dev
+```
+
+Feature branches этим не обновляются автоматически. В личном fork обновление выполняется отдельно через [UPSTREAM.md](UPSTREAM.md), с сохранением собственных изменений и merge upstream.
 
 ### Порядок переноса одной функции
 
@@ -59,7 +88,7 @@ git switch --no-track -c feature/tab-site-search upstream/dev
 5. Теперь тестировать **этот clean proposal**, а не только личный fork. Выполнить свежий import, lint затронутых imported files, registered native tests и реальную UI-проверку. Если upstream устроен иначе, адаптировать код; pass личного SHA не переносится на proposal автоматически.
 6. Закоммитить только reviewed feature/test paths с обычным содержательным сообщением. Чистота исходной базы проверяется по upstream SHA и diff; отсутствие лишнего commit title само по себе ничего не доказывает. После финального коммита повторить затронутые проверки на exact head и подготовить текст для редакции пользователя.
 
-Создание clean fork само по себе не переносит в него все личные функции. Просьба подготовить конкретную функцию к PR разрешает её локальный перенос, исправления и тестирование; согласование публичного текста и отправка остаются отдельным финальным этапом. Исправления, найденные при clean testing/review, затем переносить обратно в личную canonical реализацию отдельным рассмотренным изменением. Текущий clean checkout содержит только upstream `aa8f545346c1725bcd598c7ec86188793d423a67`; сам перенос поиска и native testing ещё не выполнены.
+Создание clean fork само по себе не переносит в него все личные функции. Просьба подготовить конкретную функцию к PR разрешает её локальный перенос, исправления и тестирование; согласование публичного текста и отправка остаются отдельным финальным этапом. Исправления, найденные при clean testing/review, затем переносить обратно в личную canonical реализацию отдельным рассмотренным изменением. Подготовленный clean checkout содержит только upstream `3d7777adc270460bd475130f78e688ddd5e41765`; сам перенос поиска и native testing ещё не выполнены.
 
 ### Локальная инфраструктура тестирования вне публичного diff
 
@@ -71,7 +100,7 @@ python3.11 /Users/oz/Projects/Zen/tools/local/dev.py \
   --toolchains /Users/oz/Projects/Zen/.zen-local/toolchains doctor --json
 ```
 
-Такой doctor реально прошёл для чистого upstream checkout: Node 22, Python 3.11, Rust 1.95.0 выбраны, Git чистый; engine и Playground ещё не подготовлены. `doctor` не является native build/test. `.zen-local/` и `.unlazy/` исключены только через локальный `.git/info/exclude`; это не изменение upstream `.gitignore` и не часть PR.
+Такой doctor реально прошёл для clean SHA `3d7777adc270460bd475130f78e688ddd5e41765`: Node 22, Python 3.11, Rust 1.95.0 выбраны, Git чистый; engine и Playground ещё не подготовлены. `doctor` не является native build/test. `.zen-local/`, `.unlazy/` и машинный `AGENTS.md` исключены только через локальный `.git/info/exclude`; это не изменение upstream `.gitignore` и не часть PR. Машинный `AGENTS.md` содержит указатель на эту инструкцию и правила clean checkout; не force-add его в публичную ветку.
 
 При дальнейшем bootstrap/build/package тем же entrypoint всегда передавать тот же `--root`/`--toolchains` **до subcommand**. State, profiles, cache, evidence и artifacts принадлежат clean root. Не заимствовать личный профиль или primary Playground state и не копировать их в новый checkout. Compiled local testing options и test-capable mozconfig проверять отдельно; они не должны незаметно попасть в публичный source diff.
 
@@ -151,16 +180,20 @@ npm run test:gtest
 1. Подготовить локальный readable diff, exact head/base SHA, результаты проверок и title/body draft. Отдельно обозначить реальные blockers и непроверенные ОС. Проверить, что head принадлежит clean contribution fork и diff не содержит personal history/status work. Не открывать PR заранее, даже draft.
 2. Пользователь лично редактирует title/body — в файле или сообщением. Сам агент может дать исходный черновик, объяснить требования и предложить правки. Итоговый публичный текст должен содержать пользовательскую редакцию и правдивые сведения.
 3. Показать финальные title/body и scope. Зафиксировать exact head/base, revision и SHA-256 одобренных текстовых файлов в `.zen-local/`. Получить явное разрешение на создание конкретного PR. Одобрение идеи функции или файла-инструкции не является разрешением отправки. Сверить актуальные явные правила проекта и обязательные поля шаблона; следовать разделу 2 без придуманного дополнительного approval flow.
-4. Создать PR только с одобренным текстом. Использовать отдельный approved body-файл с настоящими переводами строк; не собирать Markdown через shell interpolation. Если пользователь согласовал draft-режим, команда имеет такую форму:
+4. Создать PR только с одобренным текстом. Использовать отдельный approved body-файл с настоящими переводами строк; не собирать Markdown через shell interpolation. В установленном GitHub CLI `gh pr create --head OWNER:BRANCH` не поддерживает organization owner: это прямо указано в `gh pr create --help` и [CLI issue 10093](https://github.com/cli/cli/issues/10093). Для нашего `oziolabs` использовать [Create a pull request API](https://docs.github.com/en/rest/pulls/pulls#create-a-pull-request).
+
+Подготовить локальный JSON request программно из одобренных UTF-8 title/body, без изменения текста. Его поля: `title`, `body`, `head = oziolabs:FEATURE_BRANCH`, `head_repo = zen-contrib`, `base = dev`; `draft = true` только при согласованном draft-режиме. Сохранить digest request рядом с approval receipt. Непосредственно перед отправкой сверить remote head SHA, upstream base и весь request с одобренными данными. Публикация feature branch в `origin` также выполняется только в рамках разрешённой отправки.
+
+Команда после этих проверок:
 
 ```sh
 # Выполнять только после шагов 1–3 и разрешения публикации head-ветки.
-gh pr create --repo zen-browser/desktop --base dev \
-  --head "$ZEN_PR_OWNER:$ZEN_PR_BRANCH" --title "$ZEN_APPROVED_PR_TITLE" \
-  --body-file "$ZEN_APPROVED_PR_BODY" --draft
+gh api --method POST repos/zen-browser/desktop/pulls \
+  -H 'Accept: application/vnd.github+json' \
+  --input "$ZEN_APPROVED_PR_REQUEST"
 ```
 
-`ZEN_PR_OWNER` — владелец отдельного публичного contribution fork, не автоматически `ozio`. Имя head-репозитория проверить в GitHub перед отправкой. Остальные переменные задаются по согласованным локальным данным; `--draft` не обходит требование согласования. Не передавать весь внутренний документ с заметками как body. После неизвестного результата создания сначала найти уже созданный PR и проверить его, не отправлять дубликат.
+`ZEN_APPROVED_PR_REQUEST` — путь к проверенному локальному JSON, не публичный внутренний документ с заметками. Владелец head — `oziolabs`, репозиторий — `zen-contrib`; сверить их в GitHub. Draft не обходит требование согласования. После неизвестного результата создания сначала найти PR по `head = oziolabs:FEATURE_BRANCH` и `base = dev` и проверить его, не отправлять дубликат.
 
 5. Прочитать созданный PR через GitHub, сверить репозиторий/base/head, title и body с одобренными. Сразу прикрепить его к текущей задаче через `mcp__codex_app__attach_artifact` с URL; дать пользователю ссылку.
 6. Любое изменение текста PR требует новой согласованной редакции. Существенное изменение code head/base после согласования требует повторного review и обновлённых proofs. Review/comments можно читать; публичные ответы отправлять только при явном разрешении с согласованным содержанием. Merge в upstream агент самостоятельно не выполняет.
