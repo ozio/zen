@@ -5,7 +5,7 @@ Validated on 9 October 2026 in the signed macOS Playground, then promoted to dai
 - [1419618b](https://github.com/ozio/zen/commit/1419618b2339db06b894a6e3ddeaf035ace4b0d0): temporary automatic video pop-out, with explicit ownership distinct from manual PiP.
 - [18d75652](https://github.com/ozio/zen/commit/18d75652b931bc5e0d7cc850638fe8b15ed85307): site/engine selection with Tab in Command T and the browser address bar.
 
-Daily Zen now uses `ef5cc342a96bcbfba9d98618971039e34f283db7`, which adds the Move Tab correction in [Future Improvements 4](future-improvements.md). Its installation and current rollback are recorded [below](#latest-daily-candidate-move-tab); the automatic PiP and site-search validation remains the earlier package described here.
+Daily Zen now uses `6b750d914638c8aa1146848b96ca7f92f8b04522`, retaining the Move Tab correction in [Future Improvements 4](future-improvements.md) and adding the built-in MCP. Its installation and current rollback are recorded in [the MCP validation](mcp-validation.md). The earlier Move Tab installation is recorded [below](#latest-daily-candidate-move-tab); automatic PiP and site-search validation remains the earlier package described here.
 
 ## Tested automatic PiP and site-search package
 
