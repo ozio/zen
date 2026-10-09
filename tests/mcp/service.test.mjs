@@ -33,6 +33,7 @@ async function fixture() {
     cleanup(id) {
       this.cleaned.push(id);
     }
+    pruneBrowserContexts() {}
     destroy() {
       this.destroyed = true;
     }
@@ -108,6 +109,7 @@ async function fixture() {
     remove: async (path) => files.delete(path),
   };
   globalThis.ChromeUtils = {
+    generateQI: () => function () { return this; },
     defineESModuleGetters(target) {
       Object.assign(target, {
         HttpServer,
@@ -122,6 +124,7 @@ async function fixture() {
   globalThis.Ci = {
     nsICryptoHash: { SHA256: 4 },
     nsITimer: { TYPE_REPEATING_SLACK: 1 },
+    nsIAsyncInputStream: { WAIT_CLOSURE_ONLY: 1 },
   };
   globalThis.Cc = {
     "@mozilla.org/security/random-generator;1": {
@@ -284,4 +287,33 @@ test("audit and change resources never persist page contents, argument values, s
     token: "SECRET TOKEN",
   });
   assert.ok(!JSON.stringify(state.service.events).includes("SECRET"));
+});
+
+test("native peer EOF releases subscriptions without waiting for a keep-alive", async () => {
+  const { service } = await fixture();
+  await service.init();
+  const waits = [];
+  let finished = 0, removed = 0, close;
+  const response = {
+    setStatusLine() {}, setHeader() {},
+    finish() { finished++; },
+    _connection: { input: { asyncWait(...args) { waits.push(args); } } },
+  };
+  const transport = { response, controller: new AbortController() };
+  service.transports.add(transport);
+  service.protocol = {
+    openStream(spec, write, onClose) { close = onClose; return spec; },
+    removeStream(stream) { assert.equal(stream, transport.stream); removed++; close(); },
+  };
+  service.beginStream({ context: { modern: true } }, transport);
+  assert.equal(waits[0][1], Ci.nsIAsyncInputStream.WAIT_CLOSURE_ONLY);
+  const callback = waits[0][0];
+  callback.onInputStreamReady();
+  assert.equal(service.transports.size, 0);
+  assert.equal(transport.controller.signal.aborted, true);
+  assert.equal(finished, 1);
+  assert.equal(removed, 1);
+  assert.equal(waits[1][0], null);
+  callback.onInputStreamReady();
+  assert.equal(removed, 1);
 });

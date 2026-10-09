@@ -1024,17 +1024,18 @@ test("console document identity uses Gecko message.innerWindowID and does not gu
 });
 
 
-test("browser JavaScript uses a system sandbox despite chrome CSP and releases it after async evaluation", async () => {
+test("browser JavaScript retains its system context across calls and releases it with the client or window", async () => {
   const saved = Object.fromEntries(["Services", "Components", "Cu", "Cr", "Cc", "IOUtils", "PathUtils"].map(name => [name, globalThis[name]]));
   const principal = { system: true };
   const win = { document: { nodePrincipal: { isSystemPrincipal: true } }, setTimeout, clearTimeout,
     eval() { throw new Error("call to eval() blocked by CSP"); } };
   Object.defineProperty(win, "window", { get: () => win });
-  let released = 0;
+  let released = 0, created = 0;
   globalThis.Services = { ...Services, testValue: 42, scriptSecurityManager: { getSystemPrincipal: () => principal } };
   globalThis.Cc = {}; globalThis.IOUtils = {}; globalThis.PathUtils = {};
   globalThis.Components = { results: {}, utils: {
     Sandbox(actualPrincipal, options) {
+      created++;
       assert.equal(actualPrincipal, principal);
       assert.equal(options.sandboxPrototype, win);
       assert.equal(options.wantXrays, false);
@@ -1052,13 +1053,21 @@ test("browser JavaScript uses a system sandbox despite chrome CSP and releases i
     const provider = new ZenMcpPageTools(service, { devtools: { cleanup() {}, destroy() {} } });
     const result = await provider.execute("zen_javascript", {
       instanceId: "epoch-1", scope: "browser", windowId: "window",
-      source: "(async()=>{await new Promise(r=>setTimeout(r,1));window.synthetic=Services.testValue;return {system:document.nodePrincipal.isSystemPrincipal,value:window.synthetic}})()",
+      source: "(async()=>{await new Promise(r=>setTimeout(r,1));window.synthetic=Services.testValue;window.syntheticCallback=()=>Services.testValue;return {system:document.nodePrincipal.isSystemPrincipal,value:window.synthetic}})()",
     }, { id: "client" });
     assert.deepEqual(result.value, { system: true, value: 42 });
     assert.equal(win.synthetic, 42);
-    assert.equal(released, 1);
+    assert.equal(released, 0);
+    const callback = await provider.execute("zen_javascript", { instanceId: "epoch-1", scope: "browser", windowId: "window", source: "window.syntheticCallback()" }, { id: "client" });
+    assert.equal(callback.value, 42);
+    assert.equal(created, 1);
     const failed = await provider.execute("zen_javascript", { instanceId: "epoch-1", scope: "browser", windowId: "window", source: "throw new Error('synthetic failure')" }, { id: "client" });
-    assert.equal(failed.exception, "synthetic failure");assert.equal(released, 2);
+    assert.equal(failed.exception, "synthetic failure");assert.equal(released, 0);
+    provider.cleanup("client");assert.equal(released, 1);
+    await provider.execute("zen_javascript", { instanceId: "epoch-1", scope: "browser", windowId: "window", source: "42" }, { id: "client" });
+    assert.equal(created, 2);
+    win.closed = true;provider.pruneBrowserContexts();assert.equal(released, 2);
+    provider.destroy();assert.equal(released, 2);
   } finally {
     for (const [name, value] of Object.entries(saved)) {
       if (value === undefined) delete globalThis[name]; else globalThis[name] = value;

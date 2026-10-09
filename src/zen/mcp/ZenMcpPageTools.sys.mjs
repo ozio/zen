@@ -205,6 +205,7 @@ export class ZenMcpPageTools {
     this.devtools = devtools || new ZenMcpDevTools(service);
     this.snapshots = snapshots || new SnapshotStore();
     this.actors = new Map();
+    this.browserContexts = new Map();
     this.closed = false;
   }
 
@@ -317,7 +318,7 @@ export class ZenMcpPageTools {
       ),
       makeTool(
         "zen_javascript",
-        "Evaluate arbitrary JavaScript in an explicit page frame or browser system context. Browser scope has unrestricted system-principal access, including password/private data. Source may be an async IIFE. Timeout limits waiting and cannot stop synchronous code.",
+        "Evaluate arbitrary JavaScript in an explicit page frame or browser system context. Browser scope has unrestricted system-principal access, including password/private data. The client/window context persists until disconnect, window closure or server stop (32 windows per client). Source may be an async IIFE. Timeout limits waiting and cannot stop synchronous code.",
         {
           scope: schema.enum("page", "browser"),
           ...PAGE,
@@ -923,6 +924,83 @@ export class ZenMcpPageTools {
     };
   }
 
+  #browserSandbox(clientId, windowId, win) {
+    this.pruneBrowserContexts();
+    let contexts = this.browserContexts.get(clientId);
+    if (!contexts) {
+      this.browserContexts.set(clientId, (contexts = new Map()));
+    }
+    const existing = contexts.get(windowId);
+    if (existing) {
+      return existing.sandbox;
+    }
+    requireValue(
+      contexts.size < 32,
+      "too_many_browser_contexts",
+      "Disconnect this client before opening more browser JavaScript contexts"
+    );
+    // Chrome CSP forbids window.eval. Keep a separate system compartment
+    // owned by this client/window so objects and callbacks survive the next
+    // command, without changing CSP or opening a debugging listener.
+    const sandbox = Cu.Sandbox(
+      Services.scriptSecurityManager.getSystemPrincipal(),
+      {
+        sandboxPrototype: win,
+        wantXrays: false,
+        freshCompartment: true,
+        sandboxName: "Zen MCP browser JavaScript",
+      }
+    );
+    try {
+      const bindings = {
+        window: win,
+        Services,
+        ChromeUtils,
+        Components,
+        Cc,
+        Ci,
+        Cu,
+        Cr,
+        IOUtils,
+        PathUtils,
+        setTimeout: win.setTimeout.bind(win),
+        clearTimeout: win.clearTimeout.bind(win),
+      };
+      for (const [name, value] of Object.entries(bindings)) {
+        if (
+          Object.getOwnPropertyDescriptor(sandbox, name)?.configurable === false
+        ) {
+          continue;
+        }
+        Object.defineProperty(sandbox, name, {
+          value,
+          configurable: true,
+          writable: true,
+        });
+      }
+      contexts.set(windowId, { window: new WeakRef(win), sandbox });
+      return sandbox;
+    } catch (error) {
+      Cu.nukeSandbox(sandbox);
+      throw error;
+    }
+  }
+
+  pruneBrowserContexts() {
+    for (const [clientId, contexts] of this.browserContexts) {
+      for (const [windowId, context] of contexts) {
+        const win = context.window.deref();
+        if (!win || win.closed) {
+          Cu.nukeSandbox(context.sandbox);
+          contexts.delete(windowId);
+        }
+      }
+      if (!contexts.size) {
+        this.browserContexts.delete(clientId);
+      }
+    }
+  }
+
   async #javascript(args, client, signal) {
     requireValue(
       ["page", "browser"].includes(args.scope),
@@ -942,49 +1020,8 @@ export class ZenMcpPageTools {
     );
     if (args.scope === "browser") {
       const win = this.service.getWindow(args.windowId);
-      // Browser chrome forbids window.eval through CSP. A system-principal
-      // sandbox exposes the explicitly selected window without changing CSP
-      // or enabling a remote debugging listener.
-      const sandbox = Cu.Sandbox(
-        Services.scriptSecurityManager.getSystemPrincipal(),
-        {
-          sandboxPrototype: win,
-          wantXrays: false,
-          // System modules share Gecko's privileged compartment. Keep this
-          // sandbox separate so nukeSandbox receives a cross-compartment
-          // wrapper and can release the evaluator on every exit path.
-          freshCompartment: true,
-          sandboxName: "Zen MCP browser JavaScript",
-        }
-      );
-      const bindings = {
-        window: win,
-        Services,
-        ChromeUtils,
-        Components,
-        Cc,
-        Ci,
-        Cu,
-        Cr,
-        IOUtils,
-        PathUtils,
-        setTimeout: win.setTimeout.bind(win),
-        clearTimeout: win.clearTimeout.bind(win),
-      };
+      const sandbox = this.#browserSandbox(client.id, args.windowId, win);
       try {
-        for (const [name, value] of Object.entries(bindings)) {
-          if (
-            Object.getOwnPropertyDescriptor(sandbox, name)?.configurable ===
-            false
-          ) {
-            continue;
-          }
-          Object.defineProperty(sandbox, name, {
-            value,
-            configurable: true,
-            writable: true,
-          });
-        }
         const value = await withDeadline(
           Promise.resolve(
             Cu.evalInSandbox(args.source, sandbox, "1.8", import.meta.url, 1)
@@ -1006,8 +1043,6 @@ export class ZenMcpPageTools {
           scope: "browser",
           exception: boundedValue(error?.message || String(error)).value,
         };
-      } finally {
-        Cu.nukeSandbox(sandbox);
       }
     }
     const tab = this.service.getTab(args.tabId);
@@ -1036,6 +1071,10 @@ export class ZenMcpPageTools {
   }
 
   cleanup(clientId) {
+    for (const context of this.browserContexts.get(clientId)?.values() || []) {
+      Cu.nukeSandbox(context.sandbox);
+    }
+    this.browserContexts.delete(clientId);
     this.snapshots.clearClient(clientId);
     for (const reference of this.actors.get(clientId) || []) {
       try {
@@ -1048,7 +1087,10 @@ export class ZenMcpPageTools {
 
   destroy() {
     this.closed = true;
-    for (const clientId of this.actors.keys()) {
+    for (const clientId of new Set([
+      ...this.actors.keys(),
+      ...this.browserContexts.keys(),
+    ])) {
       this.cleanup(clientId);
     }
     this.snapshots.clear();

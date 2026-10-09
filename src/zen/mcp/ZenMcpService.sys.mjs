@@ -173,7 +173,7 @@ class ZenMcpServiceImpl {
       ),
       makeTool(
         "zen_client_disconnect",
-        "Release this client's subscriptions, element handles and DevTools observers. The saved access grant remains valid.",
+        "Release this client's subscriptions, element handles, browser JavaScript contexts and DevTools observers. The saved access grant remains valid.",
         {},
         []
       ),
@@ -801,6 +801,7 @@ class ZenMcpServiceImpl {
 
   maintenance() {
     this.protocol?.pruneSessions();
+    this.pageTools?.pruneBrowserContexts();
     for (const transport of [...this.transports]) {
       if (transport.response._connection._closed || transport.response._ended) {
         this.transports.delete(transport);
@@ -1092,11 +1093,34 @@ class ZenMcpServiceImpl {
       this.transports.delete(transport);
       transport.controller.abort();
       try {
+        response._connection.input?.asyncWait(null, 0, 0, null);
+      } catch {}
+      try {
         response.finish();
       } catch {}
     });
+    // httpd stops reading after dispatching a request. Waiting explicitly for
+    // EOF releases a disconnected subscriber without waiting for TCP writes
+    // or a keep-alive to fail.
     if (!spec.context.modern) {
       writeUtf8(response, ": Zen MCP subscription stream\n\n");
+    }
+    try {
+      response._connection.input?.asyncWait(
+        {
+          QueryInterface: ChromeUtils.generateQI(["nsIInputStreamCallback"]),
+          onInputStreamReady: () => {
+            if (this.transports.has(transport)) {
+              this.protocol?.removeStream(transport.stream);
+            }
+          },
+        },
+        Ci.nsIAsyncInputStream.WAIT_CLOSURE_ONLY,
+        0,
+        Services.tm.mainThread
+      );
+    } catch {
+      this.protocol.removeStream(transport.stream);
     }
   }
 }
