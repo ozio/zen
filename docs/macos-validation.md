@@ -1,6 +1,6 @@
 # macOS validation, 2026-10-08
 
-The current installed candidate is `18d75652b931bc5e0d7cc850638fe8b15ed85307`, with automatic PiP and Tab site search in addition to the red Playground identity, separate FoxPilot connections and Russian page translation. See [its exact artifacts, daily-installation checks and current rollback](auto-pip-and-site-search.md). Use [MAIN_UPDATE.md](../MAIN_UPDATE.md) for routine promotion. The rest of this document records the earlier initial setup candidate and its original-release rollback.
+The current installed candidate is `ef5cc342a96bcbfba9d98618971039e34f283db7`, with active-only Space switching for Move Tab in addition to automatic PiP, Tab site search, the red Playground identity, separate FoxPilot connections and Russian page translation. See [the latest daily-installation checks and current rollback](auto-pip-and-site-search.md#latest-daily-candidate-move-tab). Use [MAIN_UPDATE.md](../MAIN_UPDATE.md) for routine promotion. The rest of this document records the earlier initial setup candidate and its original-release rollback.
 
 The personal fork is [ozio/zen](https://github.com/ozio/zen), on `dev`. Its native build is installed at `/Applications/Zen.app` and uses the existing personal profile. The separate `/Applications/Zen Playground.app` runs the managed `.zen-local/profiles/playground` profile. No personal profile, cookies, account state or extension storage were imported into it.
 
@@ -40,7 +40,7 @@ On this prepared Mac, launch the current retained candidate from [the latest val
 
 ```sh
 source .zen-local/env.sh
-python3 tools/local/dev.py run playground --sha 18d75652b931bc5e0d7cc850638fe8b15ed85307
+python3 tools/local/dev.py run playground --sha ef5cc342a96bcbfba9d98618971039e34f283db7
 ```
 
 Close the existing Playground normally before restarting it. Always launch it through this command with the explicit profile. Opening `Zen Playground.app` directly from Finder/Dock invokes Firefox's ordinary default-profile selection; it does not establish the managed Playground identity. The native bridge refuses a mismatched instance rather than attaching to it. Preserve any unrelated profile such a manual launch creates.

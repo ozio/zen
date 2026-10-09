@@ -5,7 +5,9 @@ Validated on 9 October 2026 in the signed macOS Playground, then promoted to dai
 - [1419618b](https://github.com/ozio/zen/commit/1419618b2339db06b894a6e3ddeaf035ace4b0d0): temporary automatic video pop-out, with explicit ownership distinct from manual PiP.
 - [18d75652](https://github.com/ozio/zen/commit/18d75652b931bc5e0d7cc850638fe8b15ed85307): site/engine selection with Tab in Command T and the browser address bar.
 
-## Tested package
+Daily Zen now uses `ef5cc342a96bcbfba9d98618971039e34f283db7`, which adds the Move Tab correction in [Future Improvements 4](future-improvements.md). Its installation and current rollback are recorded [below](#latest-daily-candidate-move-tab); the automatic PiP and site-search validation remains the earlier package described here.
+
+## Tested automatic PiP and site-search package
 
 | Property | Verified value |
 |---|---|
@@ -58,7 +60,7 @@ These are focused main-installation checks. The feature scenarios and fresh nati
 
 The previous working main source `47e576d02d5542475eb4c3b092abd7e99dccf5f2`, its matching pre-update personal profile and both registries are sealed in backup `2026-10-08T22-47-31.315519_00-00-e774cdf1`. Integrity and signatures passed; an actual temporary recovery copy of the application, profile and registries matched the backup and was removed afterward. The guarded rollback preview also passed before main reopened. Rollback was not applied to the daily application. The original official-release backup is retained separately.
 
-To return to the immediately previous version, close main Zen normally and inspect the scope first:
+To return to the version before the automatic PiP and site-search installation, close main Zen normally and inspect the scope first:
 
 ```sh
 python3.11 tools/local/dev.py rollback --backup 2026-10-08T22-47-31.315519_00-00-e774cdf1
@@ -66,7 +68,27 @@ python3.11 tools/local/dev.py rollback --backup 2026-10-08T22-47-31.315519_00-00
 
 Follow [the guarded rollback procedure](../DEVELOPMENT.md#rollback) before adding `--apply`. Once the profile has evolved, restoration requires reviewing the snapshot and using `--restore-profile-snapshot`; the command preserves current data in another backup first.
 
-Local installation, recovery and normal-launch receipts are under `.zen-local/auto-pip-site-search/main-promotion/`. The current pointers are `.zen-local/main-install.json` and `.zen-local/main-post-install.json`; the latter distinguishes the complete saved session from FoxPilot's live tab subset.
+These earlier installation, recovery and normal-launch receipts are under `.zen-local/auto-pip-site-search/main-promotion/`. The current pointers are `.zen-local/main-install.json` and `.zen-local/main-post-install.json`; the latter distinguishes the complete saved session from FoxPilot's live tab subset.
+
+## Latest daily candidate: Move Tab
+
+On 9 October 2026, the user authorized installing the normal Zen application and its graceful close/restart. The guarded installer promoted the existing signed standalone package `ef5cc342a96bcbfba9d98618971039e34f283db7` to `/Applications/Zen.app`. Later commits changed only documentation, so the tested binary was reused. Its implementation is [a04ecbde](https://github.com/ozio/zen/commit/a04ecbdeb12b4cbf1516be44700c9486724e8726): background Move Tab preserves the current Space and selection; a move containing the active tab follows that tab to the destination.
+
+The package passed 59 focused tests, ESLint, a clean full macOS ARM64 build and seven actual tab-context-menu scenarios in the signed Playground. Same-profile restarts preserved all 19 persistent test tabs across both Spaces, their URL/title hashes, order and pinning. Native Enpass responses, five extensions, FoxPilot, native UI MCP, persistent cookies, updater protection and post-launch signatures were checked separately in that isolated profile.
+
+After daily startup, the installed application's complete inventory and deep/strict signature matched the standalone package. The executable SHA256 is `3f6d10b0b948bf8bba894b0c3aee6942769f06d63cde94c5653b597646c53472`; the package tree SHA256 is `146caf96ee61ab881c9bfab2a2265676377d2baf082725c95821b48b92eb46fb`. The normal bundle identity and HTTP/HTTPS handlers remained intact. The live main process opened the same registered personal profile with ordinary launch flags. Full SessionStore comparison preserved all 1,507 saved tabs, their relative order, URL/Space/group/pinned relations, Spaces, folders and groups. All 11 extensions kept their versions and enabled state. Ordinary FoxPilot reconnected on 8089, and Playground stayed separately connected on 8091. Vault unlock/autofill and the feature-menu scenarios were not repeated in the personal profile.
+
+The first apply attempt stopped on the running-process guard. That process exited before the successful retry. The installer verified that the personal profile and registries were unchanged during replacement. The previous source `18d75652b931bc5e0d7cc850638fe8b15ed85307`, application, profile and registries are sealed in backup `2026-10-09T00-52-22.316397_00-00-6785106c`. Backup integrity and the guarded rollback preview passed before normal startup. The unchanged restore procedure retains its earlier actual recovery-copy validation; no new recovery copy or daily rollback was applied in this update.
+
+After closing main normally, preview the current rollback with:
+
+```sh
+python3.11 tools/local/dev.py rollback --backup 2026-10-09T00-52-22.316397_00-00-6785106c
+```
+
+Follow [the rollback procedure](../DEVELOPMENT.md#rollback) before applying it. If the profile has evolved, inspect the snapshot scope and the required `--restore-profile-snapshot`; newer data is preserved in another backup.
+
+Current installation/read-back evidence and phase timings are under `.zen-local/move-tab/main-promotion/`. Feature and compatibility evidence is under `.zen-local/move-tab/ef5cc342a96bcbfba9d98618971039e34f283db7/` and `.zen-local/compatibility/ef5cc342a96bcbfba9d98618971039e34f283db7.json`. Personal URLs, Space names, cookies and vault data were not exported into these reports. Linux/Windows native runtime and crash recovery were not tested.
 
 ## Retained evidence and launch
 
