@@ -1011,6 +1011,7 @@ test("browser JavaScript uses a system sandbox despite chrome CSP and releases i
   const principal = { system: true };
   const win = { document: { nodePrincipal: { isSystemPrincipal: true } }, setTimeout, clearTimeout,
     eval() { throw new Error("call to eval() blocked by CSP"); } };
+  Object.defineProperty(win, "window", { get: () => win });
   let released = 0;
   globalThis.Services = { ...Services, testValue: 42, scriptSecurityManager: { getSystemPrincipal: () => principal } };
   globalThis.Cc = {}; globalThis.IOUtils = {}; globalThis.PathUtils = {};
@@ -1019,7 +1020,9 @@ test("browser JavaScript uses a system sandbox despite chrome CSP and releases i
       assert.equal(actualPrincipal, principal);
       assert.equal(options.sandboxPrototype, win);
       assert.equal(options.wantXrays, false);
-      return Object.create(win);
+      const sandbox = Object.create(win);
+      Object.defineProperty(sandbox, "Components", { value: Components, configurable: false });
+      return sandbox;
     },
     evalInSandbox(source, sandbox) { return vm.runInNewContext(source, sandbox); },
     nukeSandbox() { released++; },

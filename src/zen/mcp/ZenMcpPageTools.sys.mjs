@@ -953,7 +953,7 @@ export class ZenMcpPageTools {
           sandboxName: "Zen MCP browser JavaScript",
         }
       );
-      Object.assign(sandbox, {
+      const bindings = {
         window: win,
         Services,
         ChromeUtils,
@@ -966,10 +966,25 @@ export class ZenMcpPageTools {
         PathUtils,
         setTimeout: win.setTimeout.bind(win),
         clearTimeout: win.clearTimeout.bind(win),
-      });
+      };
       try {
+        for (const [name, value] of Object.entries(bindings)) {
+          if (
+            Object.getOwnPropertyDescriptor(sandbox, name)?.configurable ===
+            false
+          ) {
+            continue;
+          }
+          Object.defineProperty(sandbox, name, {
+            value,
+            configurable: true,
+            writable: true,
+          });
+        }
         const value = await withDeadline(
-          Promise.resolve(Cu.evalInSandbox(args.source, sandbox)),
+          Promise.resolve(
+            Cu.evalInSandbox(args.source, sandbox, "1.8", import.meta.url, 1)
+          ),
           timeoutMs,
           signal
         );
