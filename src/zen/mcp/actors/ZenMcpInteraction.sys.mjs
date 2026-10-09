@@ -417,6 +417,16 @@ export function validateAction(args) {
   }
 }
 
+function containsComposedHit(element, hit) {
+  while (hit) {
+    if (hit === element || element.contains(hit)) {
+      return true;
+    }
+    hit = hit.getRootNode()?.host;
+  }
+  return false;
+}
+
 function clickablePoint(win, element) {
   element.scrollIntoView({
     block: "nearest",
@@ -443,7 +453,7 @@ function clickablePoint(win, element) {
     hit = next;
   }
   requireValue(
-    hit === element || element.contains(hit),
+    containsComposedHit(element, hit),
     "click_intercepted",
     "Another element covers this target; inspect it again"
   );

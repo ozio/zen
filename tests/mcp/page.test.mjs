@@ -824,6 +824,24 @@ test("trusted double/context click sequences contain actual pointer actions", as
   assert.ok(events.every((event) => event.button === 2));
 });
 
+test("native pointer checks accept the control's shadow child and reject unrelated covers", async () => {
+  const { win, doc, element } = documentFixture();
+  const button = element("toolbarbutton", "target");
+  button.namespaceURI = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+  const inner = element("toolbarbutton", "inner");
+  inner.getRootNode = () => ({ host: button });
+  doc.elementFromPoint = () => inner;
+  let events = 0;
+  mocks.event = { async synthesizeMouseAtPoint() { events++; } };
+  await performAction(win, button, { action: "click" }, true);
+  assert.equal(events, 1);
+  const cover = element("div", "cover");
+  cover.getRootNode = () => doc;
+  doc.elementFromPoint = () => cover;
+  await assert.rejects(performAction(win, button, { action: "click" }, true), { code: "click_intercepted" });
+  assert.equal(events, 1);
+});
+
 test("navigation cannot report the previous ready document while the new load is starting", async () => {
   const { tab, top } = tabFixture();
   let progress;
@@ -1020,6 +1038,7 @@ test("browser JavaScript uses a system sandbox despite chrome CSP and releases i
       assert.equal(actualPrincipal, principal);
       assert.equal(options.sandboxPrototype, win);
       assert.equal(options.wantXrays, false);
+      assert.equal(options.freshCompartment, true);
       const sandbox = Object.create(win);
       Object.defineProperty(sandbox, "Components", { value: Components, configurable: false });
       return sandbox;

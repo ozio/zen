@@ -950,6 +950,10 @@ export class ZenMcpPageTools {
         {
           sandboxPrototype: win,
           wantXrays: false,
+          // System modules share Gecko's privileged compartment. Keep this
+          // sandbox separate so nukeSandbox receives a cross-compartment
+          // wrapper and can release the evaluator on every exit path.
+          freshCompartment: true,
           sandboxName: "Zen MCP browser JavaScript",
         }
       );
