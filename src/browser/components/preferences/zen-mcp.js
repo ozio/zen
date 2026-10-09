@@ -152,7 +152,14 @@ var gZenMcpSettings = {
       try {
         Cc["@mozilla.org/uriloader/external-protocol-service;1"]
           .getService(Ci.nsIExternalProtocolService)
-          .loadURI(Services.io.newURI("codex://skills"));
+          .loadURI(
+            Services.io.newURI("codex://skills"),
+            Services.scriptSecurityManager.getSystemPrincipal(),
+            null,
+            window.browsingContext,
+            false,
+            true
+          );
       } catch {
         this._setError("zen-mcp-error-open-codex");
       }

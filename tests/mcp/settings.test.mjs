@@ -254,6 +254,8 @@ function harness({ kind = "main", category = "paneZenMcp" } = {}) {
       },
     },
     Services: {
+      io: { newURI: value => value },
+      scriptSecurityManager: { getSystemPrincipal: () => ({ kind: "system" }) },
       prefs: denyStorage,
       obs: {
         addObserver(observer, topic) {
@@ -267,6 +269,11 @@ function harness({ kind = "main", category = "paneZenMcp" } = {}) {
       },
     },
     Cc: {
+      "@mozilla.org/uriloader/external-protocol-service;1": {
+        getService() {
+          return { loadURI(uri, principal) { calls.push(["openSkills", uri, principal.kind]); } };
+        },
+      },
       "@mozilla.org/widget/clipboardhelper;1": {
         getService() {
           return {
@@ -576,6 +583,8 @@ test("agent buttons install separate connections and token-free skills without e
   assert.match(h.clipboard[1], /claude mcp add --transport http --scope user zen /);
   await h.command("zenMcpInstallCodexSkill");
   await h.command("zenMcpInstallClaudeSkill");
+  await h.command("zenMcpOpenCodexSkills");
+  assert.deepEqual(h.calls.find(([method]) => method === "openSkills"), ["openSkills", "codex://skills", "system"]);
   assert.deepEqual(h.calls.filter(([method]) => method === "installAgentSkill"), [["installAgentSkill", "codex"], ["installAgentSkill", "claude"]]);
   assert.equal(h.status.enabled, false);
   assert.equal(h.element("zenMcpEnabled").checked, false);
