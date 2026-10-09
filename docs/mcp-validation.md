@@ -6,7 +6,7 @@ Validated and installed on 9 October 2026. Future Improvements **9 is complete o
 
 | Property | Verified value |
 |---|---|
-| Source SHA | `6b750d914638c8aa1146848b96ca7f92f8b04522` |
+| Source SHA | `a9a0da176b9ad3377cb281ce138d7cc5e0efe297` |
 | Browser / engine | Zen `1.23.1b` / Firefox `157.0.1` |
 | Host | macOS `26.6.2`, ARM64 |
 | Compiler / SDK / deployment target | Bootstrapped Clang `22.1.8` / `MacOSX26.5.sdk` / `11.0` |
@@ -14,17 +14,47 @@ Validated and installed on 9 October 2026. Future Improvements **9 is complete o
 | Preparation | Fresh locked-dependency import, full build with 8 jobs, standalone packaging; full-build receipt has `ui_only=false`, `native_incremental=false` |
 | Signing | `Developer ID Application: Nikolay Soloviov (XF4FP36XSB)`, identity `9FAAACAA8503C3009F05CA0C12585CF6DBFFCD82`; secure timestamp; complete deep/strict verification before and after launch |
 | Notarization | Not performed, as explicitly requested by the user |
-| Main executable SHA-256 | `ac05b65bff5ab3ea4533b3809abebb6effb6eab8b976445ca8f19995a3487e84` |
-| Main package tree SHA-256 | `098ca56900908294d12bfe6e13bbc753042edd350ec5b8963777e198ba5da53a` |
-| Playground package tree SHA-256 | `11309694a90d29ccfad53907d4766aa087dd46541ae5c5717868cea1626f1540` |
+| Main executable SHA-256 | `bbade3b69d6f09467b80d845eaf810000a3be49640be8b130a31aa5373dc205e` |
+| Main package tree SHA-256 | `5b5b65e733ac68cdbe212f3300d22c303ff396baed2bd7d9d1f5767c8f44268b` |
+| Playground package tree SHA-256 | `635d0ae84dfa77a8b548415f786dfbd779d662557bae082706634e019a4b2e91` |
 | Package / evidence root | `/Users/oz/.codex/worktrees/zen-mcp/Zen` |
 | Installed apps | `/Applications/Zen.app`, `/Applications/Zen Playground.app` |
 
 Both packages are sealed and standalone; no external symlinks were found. The deployed Playground inventory matched its signed variant, and the daily app inventory matched the immutable main base after normal startup. Later documentation commits advance `dev` without changing this installed source SHA.
 
-## Packaged MCP checks
+## Agent setup and skills on the current candidate
 
-The retained Playground profile was created empty for this task. No personal profile files, cookies, session, account state or extension storage were copied into it. All final acceptance checks below used the exact candidate above; earlier exploratory builds are retained separately and do not constitute its acceptance evidence.
+The current candidate adds Codex/Claude Code setup, CLI copy buttons, local skill installation and `codex://skills` dispatch. The compiled MCP default remains **off**. Enabling the checkbox persists for that profile and starts the server with Zen; clearing it stops the server and leaves it off after restart. Installing a connection or skill does not enable MCP.
+
+The following checks used the exact current signed Playground, retaining the same profile originally created empty. Test destinations for client configuration and skills were redirected into a private validation directory; production file I/O, the bundled skill and the actual installed client parsers were used. Personal global agent configuration was not changed by verification.
+
+| Area | Actual result on `a9a0da17` |
+|---|---|
+| Settings installation | Actual controls installed separate Codex and Claude Code HTTP connections and skills, copied the CLI commands, and wiped credential fields on dismissal. All eight onboarding checks passed. |
+| Ownership and access | Reconfiguration revoked only the previous Codex token; Claude configuration/token stayed valid. An edited skill was refused and preserved. Configurations/skills were `0600`; profile metadata and audit contained no tokens. Automated tests additionally covered foreign/malformed configuration, duplicate TOML, rollback and concurrent setup. |
+| Actual clients | Claude Code CLI reported Connected. The native CLI bundled with Codex read the generated configuration; Codex app-server discovered all 49 live tools and the installed skill. All four client checks passed without invoking a model turn. |
+| Deep link | Registered macOS handler and dispatch from the actual Zen settings button passed. The documented `codex://skills` opens the skills list; arbitrary skill installation uses Zen's local installer. Codex GUI content was not inspected because Computer Use refused that application. |
+| Protocol | All four MCP revisions, resources, subscriptions, header/auth/error handling, UTF-8 and disconnect passed in 11 live checks. |
+| Same-profile restart | After clearing the actual checkbox and a graceful restart, the preference remained false and port 3924 had no listener. Re-enabling through settings restored the saved grants. Identity changed and the old ID was rejected. All 94 original tabs retained order/relations; 96 tabs after restart include two startup pages. Spaces, cookies, localStorage, IndexedDB and five extensions persisted. |
+| Existing integration | FoxPilot's fresh synthetic snapshot/click passed after restart with separate 8089/8091 routes. The fresh Enpass extension received a real native `greetings` response with trusted browser and authentication required; unlock/autofill were not repeated. Strict post-launch signature, sealed inventories, profile isolation and update protection passed. |
+
+Canonical regression checks passed: **214 tests, including 102 MCP tests**, zero failures or skips. Gecko ESLint and the bundled skill validator passed. Fresh locked import, a full eight-job build and standalone packaging passed before the tests above.
+
+Browser/page/data/DevTools providers, actors and protocol code did not change in this addition. The compatibility receipt explicitly carries forward the original Inspector, 1500-tab stress and full provider coverage from `6b750d91`, retained below. Those extensive checks are earlier evidence and are not reported as rerun on `a9a0da17`.
+
+## Current daily installation and normal launch
+
+[MAIN_UPDATE.md](../MAIN_UPDATE.md) was followed with the exact standalone package and qualified compatibility proof. The first attempt refused an old crash-reporting process from a previous launch. That specific reporter was quit normally; no app or profile guard was bypassed. The successful preview/apply/rollback-preview/normal-launch phase took **40.543 seconds**: preview 5.976 s, apply 29.898 s, rollback preview 4.573 s, launch request 0.056 s. This interval excludes the refused attempt, window rendering and session flush.
+
+The sealed backup contains the preceding `6b750d91` app, the registered personal profile and registries. Rollback preview passed before normal startup. The installed main inventory and deep/strict signature match the exact package after launch. Its live process opened the same personal profile with ordinary flags and no privileged remote debugging.
+
+The session read-back preserved **1533 of 1533** saved tabs, their relative order, pinning, Space/group relations, and window/Space/folder/group metadata. All **11** extensions retained versions and enabled state. HTTP/HTTPS default handlers and the independent FoxPilot routes stayed intact; the Playground package did not change during promotion.
+
+The existing enabled MCP preference and previously issued Codex grant survived the update. Seven live main checks passed: exact source/PID/instance and 49 tools, paginated tabs, independent main/Playground grants, owned page navigation/snapshot/trusted click/page JS, system JS, explicit-target console/network/resource subscriptions, cleanup preserving prior tab IDs/order, and private hash-only registry/audit. A separate owned settings tab verified all five agent/skill buttons, empty one-time CLI fields, the compiled default `false` and preserved enabled preference. Only owned verification tabs were closed and the prior selection restored. Main verification did not install anything into personal global agent configuration.
+
+## Original packaged MCP acceptance (`6b750d91`)
+
+The original standalone candidate `6b750d914638c8aa1146848b96ca7f92f8b04522` passed the checks in this section. The retained Playground profile was created empty for the task. No personal profile files, cookies, session, account state or extension storage were copied into it. These results remain bound to that original SHA; current-candidate checks are listed above.
 
 | Area | Actual result |
 |---|---|
@@ -46,7 +76,7 @@ The retained Playground profile was created empty for this task. No personal pro
 
 Canonical tests passed: **201 total, including 89 MCP tests**, with zero failures. Gecko ESLint passed for the MCP modules and settings script. These checks supplement the real packaged operations above.
 
-## Existing integration checks
+## Original integration checks (`6b750d91`)
 
 - The native Playground stdio bridge verified exact app/profile/PID/source identity, inspected chrome and captured a viewport before and after restart. Settings and browser controls were exercised in the actual UI.
 - FoxPilot `1.0.22` was configured through its supported options UI with the complete Playground port list `[8091]`; Automation Mode was enabled through its normal permission UI. The daily connection remained exclusively on `[8089]`. Before and after restart, FoxPilot took a fresh snapshot, clicked the owned fixture's Increment button, and the built-in MCP independently observed counter `1`. Only the owned tab was closed.
@@ -55,7 +85,9 @@ Canonical tests passed: **201 total, including 89 MCP tests**, with zero failure
 - The visible **Tabs and browsing → Startup → Open previous windows and tabs** checkbox was toggled off and on; independently observed `browser.startup.page` values were `3 → 1 → 3`. No session files were edited to make restoration pass.
 - Compiled `MOZ_UPDATER=false` and `app.update.auto=false` were verified. The Playground remained separate from the personal profile and browser account.
 
-## Daily installation and normal launch
+## Original daily installation and normal launch (`6b750d91`)
+
+This section records the initial MCP installation, before the current agent-setup addition.
 
 [MAIN_UPDATE.md](../MAIN_UPDATE.md) was followed. The exact package and compatibility receipt were prepared while main remained open. Its registered personal profile and per-install default were identified from the live process and registry; the different global default in `profiles.ini` was not changed.
 
@@ -77,27 +109,28 @@ Run the retained candidate from its own root with the primary managed toolchains
 python3.11 tools/local/dev.py \
   --root /Users/oz/.codex/worktrees/zen-mcp/Zen \
   --toolchains /Users/oz/Projects/Zen/.zen-local/toolchains \
-  run playground --sha 6b750d914638c8aa1146848b96ca7f92f8b04522
+  run playground --sha a9a0da176b9ad3377cb281ce138d7cc5e0efe297
 ```
 
-Immediate previous-version backup: **`2026-10-09T06-07-01.119644_00-00-2d9e66a9`**, under the candidate root's `.zen-local/backups/`. Inspect rollback with main gracefully stopped:
+Immediate previous-version backup: **`2026-10-09T08-43-03.909823_00-00-44c991e3`**, restoring `6b750d91`, under the candidate root's `.zen-local/backups/`. Inspect rollback with main gracefully stopped:
 
 ```sh
 python3.11 tools/local/dev.py \
   --root /Users/oz/.codex/worktrees/zen-mcp/Zen \
   --toolchains /Users/oz/Projects/Zen/.zen-local/toolchains \
-  rollback --backup 2026-10-09T06-07-01.119644_00-00-2d9e66a9
+  rollback --backup 2026-10-09T08-43-03.909823_00-00-44c991e3
 ```
 
-Apply only the reviewed preview with `--apply`. Since the live profile has evolved, the guard may require `--restore-profile-snapshot`; follow [the rollback procedure](../DEVELOPMENT.md#rollback) and review the effect on newly created profile data before restoring that snapshot. The wrapper preserves current app/profile/registries in another backup. The earlier original-release backup remains retained in the primary checkout.
+Apply only the reviewed preview with `--apply`. Since the live profile has evolved, the guard may require `--restore-profile-snapshot`; follow [the rollback procedure](../DEVELOPMENT.md#rollback) and review the effect on newly created profile data before restoring that snapshot. The wrapper preserves current app/profile/registries in another backup. The earlier `2026-10-09T06-07-01.119644_00-00-2d9e66a9` backup and the original-release backup remain retained.
 
 Evidence is machine-local and ignored by Git. Under `/Users/oz/.codex/worktrees/zen-mcp/Zen/.zen-local/`:
 
-- `builds/6b750d914638c8aa1146848b96ca7f92f8b04522/build.json`, `artifacts/6b750d914638c8aa1146848b96ca7f92f8b04522/manifest.json`, corresponding `playground-artifacts/` manifest and import/build/package logs;
-- `compatibility/6b750d914638c8aa1146848b96ca7f92f8b04522.json`, binding the actual phase files and their hashes to both sealed packages;
-- `mcp-validation/`: settings, protocol, Inspector, page/native operations, concurrency/EOF cleanup, stress, restart persistence, extension provenance, FoxPilot, Enpass, restore UI and post-restart signature receipts;
-- `mcp-main/`: installation preview/apply, pre-launch rollback preview, timings, signature/application, redacted personal-session comparison, settings onboarding and `mcp-runtime.json`; the connection file and profile backups remain private;
-- primary checkout: `.zen-local/mcp-final-regression.tap` and `.zen-local/mcp-final-eslint.txt`.
+- `builds/a9a0da176b9ad3377cb281ce138d7cc5e0efe297/build.json`, matching `artifacts/` and `playground-artifacts/` manifests and fresh import/build/package logs;
+- `compatibility/a9a0da176b9ad3377cb281ce138d7cc5e0efe297.json`, binding current phase-file hashes to both sealed packages and naming the carried-forward original scope;
+- `mcp-onboarding/`: native setup, both clients, deep-link dispatch, disabled restart persistence, package/profile, and `validation/` protocol/FoxPilot/Enpass receipts;
+- `mcp-onboarding-main/`: guarded installation, rollback preview, timings, application/signature, redacted session comparison, `mcp-runtime.json` and `settings.json`; connection files and profile backups remain private;
+- original `6b750d91` build/manifests/compatibility and `mcp-validation/` settings, Inspector, full API/concurrency/stress/persistence/integration receipts; original `mcp-main/` installation/runtime receipts;
+- primary checkout: `.zen-local/mcp-onboarding-regression-final.tap`, `.zen-local/mcp-onboarding-eslint-final.txt` and preparation logs; original regression/ESLint evidence remains retained separately.
 
 ## Practical limits
 
