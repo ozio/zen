@@ -296,6 +296,10 @@ export function createAgentSetup(service, hash, id) {
 
   async function validateCodex(text, server, entry) {
     const search = [
+      ...(Services.appinfo.OS === "Darwin" ? [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+        "/Applications/Codex.app/Contents/Resources",
+      ] : []),
       ...(Subprocess.getEnvironment().PATH?.split(
         Services.appinfo.OS === "WINNT" ? ";" : ":",
       ) || []),
@@ -337,7 +341,7 @@ export function createAgentSetup(service, hash, id) {
       process = await Subprocess.call({
         command,
         arguments: ["mcp", "get", server, "--json"],
-        environment: { CODEX_HOME: directory },
+        environment: { CODEX_HOME: directory, PATH: search.join(Services.appinfo.OS === "WINNT" ? ";" : ":") },
         environmentAppend: true,
         workdir: directory,
         stderr: "pipe",
