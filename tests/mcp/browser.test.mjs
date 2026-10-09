@@ -640,6 +640,50 @@ test("media enumeration skips unloaded browsers and accepts absent native positi
   );
 });
 
+test("PiP uses Gecko's eligible-count record for the explicit loaded tab", async () => {
+  const { provider, win } = fixture();
+  const tab = fakeTab(win, 50, { loaded: true });
+  win.gZenWorkspaces.allStoredTabs.push(tab);
+  let eligible = 1;
+  let launches = 0;
+  mocks.PictureInPicture = {
+    getEligiblePipVideoCount(browser) {
+      assert.equal(browser, tab.linkedBrowser);
+      return { totalPipCount: eligible, totalPipDisabled: 0 };
+    },
+  };
+  tab.linkedBrowser.browsingContext.currentWindowGlobal.getActor = (name) => {
+    assert.equal(name, "PictureInPictureLauncher");
+    return {
+      sendAsyncMessage(message) {
+        assert.equal(message, "PictureInPicture:KeyToggle");
+        launches++;
+        tab.setAttribute("pictureinpicture", "true");
+      },
+    };
+  };
+  const result = await execute(provider, "zen_media", {
+    action: "pipOpen",
+    tabId: tab.mcpId,
+  });
+  assert.equal(result.tab.pictureInPicture, true);
+  assert.equal(launches, 1);
+  tab.removeAttribute("pictureinpicture");
+  eligible = 0;
+  await rejectsCode(
+    execute(provider, "zen_media", {
+      action: "pipOpen",
+      tabId: tab.mcpId,
+    }),
+    "no_pip_video",
+  );
+  assert.equal(launches, 1);
+  await rejectsCode(
+    execute(provider, "zen_media", { action: "pipOpen", tabId: "tab-1" }),
+    "tab_unloaded",
+  );
+});
+
 test("history pagination visits only requested native nodes and closes the result", async () => {
   const { data } = fixture();
   const indexes = [];

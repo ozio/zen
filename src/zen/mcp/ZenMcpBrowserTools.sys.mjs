@@ -1968,8 +1968,10 @@ export class ZenMcpBrowserTools {
     );
     const browser = tab.linkedBrowser;
     if (args.action === "pipOpen") {
+      const { totalPipCount } =
+        lazy.PictureInPicture.getEligiblePipVideoCount(browser);
       requireValue(
-        lazy.PictureInPicture.getEligiblePipVideoCount(browser) > 0,
+        totalPipCount > 0,
         "no_pip_video",
         "Firefox has no eligible video in this tab"
       );
