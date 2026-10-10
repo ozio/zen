@@ -2,7 +2,43 @@
 
 Validated and installed on 9 October 2026. Future Improvements **9 is complete on macOS ARM64**. The implementation and connection instructions are in [mcp.md](mcp.md). Jev remains the separate future task 11; no Jev runner or API extension was included.
 
-## Exact installed candidate
+## Current standalone candidate, 10 October 2026
+
+Installed source: `f58d2508b35519c37bbd2a2283a53bdba5c32777`, built and retained in `/Users/oz/Projects/Zen`. Zen/Firefox and the MCP feature implementation are unchanged from the previous candidate; this fixes distribution packaging and rejects developer bundles during artifact verification.
+
+| Property | Verified value |
+|---|---|
+| Main binary SHA-256 | `ccba6e9a1da84bf27d5e7899155d8207844b7231dc0793c39512dccb6102f74d` |
+| Main package tree SHA-256 | `e657b8f09de84a70b07a5160c608e85c850d716e304281f00a64d447e4ee1c24` |
+| Playground tree SHA-256 | `7821268a8003b28de0275ac8ffcaec3b32246d00b3d048b57035cdb438db0035` |
+| Build | Fresh locked import, full eight-job build; `ui_only=false`, `native_incremental=false` |
+| Signing / host | Same Developer ID identity, deep/strict signatures after launch; macOS ARM64, Clang 22.1.8, SDK 26.5 |
+| Tests | 86 local-control, 45 native-bridge and 102 MCP tests passed |
+| Immediate backup | `2026-10-10T07-21-00.342879_00-00-33417ff6` in the primary checkout |
+
+Both signed packages contain the actual staged GRE `omni.ja`, valid archives and no developer repo/object plist keys. The entire original engine/source/object directory was temporarily renamed out of its compiled location during Playground startup, graceful restarts, integration checks, main installation and normal main launch. It was restored afterward. The temporary empty `zen-mcp` directory workaround was removed before main launch.
+
+The same originally empty Playground profile retained 20 semantic test tabs, their order/pinning/Space/group/container relationships, two Spaces, a persistent HTTP cookie and localStorage counter 4242. Five signed extensions remained active. Real native UI Space/tab actions, built-in MCP snapshot/action/read-back and retained access after restart passed. Dedicated FoxPilot used only 8091, ordinary main used only 8089, and Enpass returned a fresh native greeting without an untrusted-browser result. Vault unlock/autofill and Keepa CAPTCHA were not repeated.
+
+Guarded preview/apply and rollback preview passed. The measured interval from the successful stopped-state check to normal-launch request was 37.831 seconds; the earlier stopped-state refusal while a child process drained and window rendering are excluded. Main opened the original registered profile without privileged debug flags while the engine was still unavailable. All 1475 tabs and 11 extension versions/active states survived. One three-tab folder shifted on restoration; its position was compared with the sealed pre-install SessionStore and returned to that saved position through the native browser move operation. Final hashes match the complete original tab order and pinning/Space/group/container relations. HTTP/HTTPS still target `/Applications/Zen.app`; installed inventory and deep/strict signature match the immutable package.
+
+Current evidence is under `.zen-local/packaging-repair/`, `.zen-local/compatibility/f58d2508b35519c37bbd2a2283a53bdba5c32777.json`, `.zen-local/main-install.json` and `.zen-local/main-post-install.json` in the primary checkout. The previous Playground app is preserved there separately; the test profile was not reset.
+
+Run the retained Playground from this repository after closing only the current Playground:
+
+```sh
+python3.11 tools/local/dev.py run playground --sha f58d2508b35519c37bbd2a2283a53bdba5c32777
+```
+
+Rollback preview, with main normally stopped:
+
+```sh
+python3.11 tools/local/dev.py rollback --backup 2026-10-10T07-21-00.342879_00-00-33417ff6
+```
+
+The backup restores the preceding `a9a0da17` developer app. That app requires its old developer directories; inspect the recovery record before using it. Preview may require explicit profile-snapshot restoration once newer profile data exists. Follow DEVELOPMENT.md and preserve current data.
+
+## Previous candidate, 9 October 2026
 
 | Property | Verified value |
 |---|---|
@@ -101,9 +137,9 @@ The installed main server then passed seven live checks: exact build/PID/instanc
 
 The final delivery check later found the main process stopped; its cause was not inferred, and no matching crash report was found. A normal launch restored the enabled server and the same previously issued bearer grant without recreating access. The instance/PID changed, and all seven main MCP checks, personal-session preservation, extension state, FoxPilot routing and post-launch signature passed again. Initial and restarted receipts are retained separately.
 
-## Retained package, rollback and evidence
+## Historical candidate paths and evidence
 
-Run the retained candidate from its own root with the primary managed toolchains, after gracefully stopping only the current Playground:
+The former `zen-mcp` worktree was removed. Its package, rollback and evidence paths below are historical records, not current recovery commands. Use the primary-checkout candidate and backup documented above. The previously recorded launch was:
 
 ```sh
 python3.11 tools/local/dev.py \
@@ -112,7 +148,7 @@ python3.11 tools/local/dev.py \
   run playground --sha a9a0da176b9ad3377cb281ce138d7cc5e0efe297
 ```
 
-Immediate previous-version backup: **`2026-10-09T08-43-03.909823_00-00-44c991e3`**, restoring `6b750d91`, under the candidate root's `.zen-local/backups/`. Inspect rollback with main gracefully stopped:
+Historically recorded previous-version backup: **`2026-10-09T08-43-03.909823_00-00-44c991e3`**, restoring `6b750d91`, under the candidate root's `.zen-local/backups/`. Inspect rollback with main gracefully stopped:
 
 ```sh
 python3.11 tools/local/dev.py \
@@ -121,9 +157,9 @@ python3.11 tools/local/dev.py \
   rollback --backup 2026-10-09T08-43-03.909823_00-00-44c991e3
 ```
 
-Apply only the reviewed preview with `--apply`. Since the live profile has evolved, the guard may require `--restore-profile-snapshot`; follow [the rollback procedure](../DEVELOPMENT.md#rollback) and review the effect on newly created profile data before restoring that snapshot. The wrapper preserves current app/profile/registries in another backup. The earlier `2026-10-09T06-07-01.119644_00-00-2d9e66a9` backup and the original-release backup remain retained.
+Apply only the reviewed preview with `--apply`. Since the live profile has evolved, the guard may require `--restore-profile-snapshot`; follow [the rollback procedure](../DEVELOPMENT.md#rollback) and review the effect on newly created profile data before restoring that snapshot. The wrapper preserves current app/profile/registries in another backup. The old worktree backups are no longer available at these paths. The primary-checkout original-release backup is separate.
 
-Evidence is machine-local and ignored by Git. Under `/Users/oz/.codex/worktrees/zen-mcp/Zen/.zen-local/`:
+Historical machine-local evidence was recorded under the now removed `/Users/oz/.codex/worktrees/zen-mcp/Zen/.zen-local/`:
 
 - `builds/a9a0da176b9ad3377cb281ce138d7cc5e0efe297/build.json`, matching `artifacts/` and `playground-artifacts/` manifests and fresh import/build/package logs;
 - `compatibility/a9a0da176b9ad3377cb281ce138d7cc5e0efe297.json`, binding current phase-file hashes to both sealed packages and naming the carried-forward original scope;
