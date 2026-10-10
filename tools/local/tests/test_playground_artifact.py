@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import unittest
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -45,6 +46,8 @@ def base_artifact(test, sha=FORK, real_signature=False, identity="-"):
         "LSMinimumSystemVersion": "10.15"}))
     resources = bundle / "Contents" / "Resources"
     resources.mkdir()
+    with zipfile.ZipFile(resources / "omni.ja", "w") as archive:
+        archive.writestr("chrome.manifest", "# synthetic GRE archive")
     (resources / "application.ini").write_text("[App]\nSourceStamp=%s\n" % sha)
     (resources / "firefox.icns").write_bytes(b"original main icon")
     if real_signature:

@@ -12,6 +12,7 @@ import socket
 import subprocess
 import time
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -324,6 +325,32 @@ def discover_bundle(ctx: Context) -> Path:
     return candidates[0]
 
 
+def require_packaged_bundle(bundle: Path) -> None:
+    """Gecko uses the GRE omni.ja to distinguish a distribution from a dev app."""
+    resources = bundle / "Contents" / "Resources" if bundle.suffix == ".app" else bundle
+    archive = resources / "omni.ja"
+    if not archive.is_file() or not zipfile.is_zipfile(archive):
+        raise DevError("Standalone package requires a valid GRE omni.ja; developer bundles are not distributable")
+    if bundle.suffix == ".app":
+        plist = plistlib.loads((bundle / "Contents" / "Info.plist").read_bytes())
+        if any(key in plist for key in ("MozillaDeveloperRepoPath", "MozillaDeveloperObjPath")):
+            raise DevError("Standalone package retains developer repository/object paths")
+
+
+def packaged_bundle(bundle: Path) -> Path:
+    # mach package stages the macOS distribution under dist/<product>/<name>.app.
+    # The sibling dist/<name>.app remains the developer build, even after packaging.
+    if bundle.suffix != ".app":
+        require_packaged_bundle(bundle)
+        return bundle
+    dist = bundle.parent.parent if bundle.parent.name != "dist" else bundle.parent
+    candidates = sorted(path for path in dist.glob("*/" + bundle.name) if path.is_dir())
+    if len(candidates) != 1:
+        raise DevError("Expected one mach package staged bundle, found %s" % len(candidates))
+    require_packaged_bundle(candidates[0])
+    return candidates[0]
+
+
 def verify_artifact(ctx: Context, sha: str) -> Dict[str, Any]:
     sha = require_sha(sha)
     root = ctx.managed(ctx.local / "artifacts" / sha)
@@ -339,6 +366,7 @@ def verify_artifact(ctx: Context, sha: str) -> Dict[str, Any]:
         raise DevError("Artifact paths escape their immutable SHA directory")
     if str(browser_binary(bundle)) != str(binary) or source_stamp(bundle) != sha:
         raise DevError("Artifact binary/source stamp differs from its manifest")
+    require_packaged_bundle(bundle)
     files = tree_inventory(bundle)
     if files != manifest.get("files") or inventory_digest(files) != manifest.get("tree_sha256"):
         raise DevError("Immutable artifact files changed")
@@ -582,11 +610,13 @@ def package(ctx: Context, args: Any) -> Dict[str, Any]:
                           ctx.root / "engine", env,
                           ctx.managed(ctx.local / "logs" / "package.log", create_parent=True))
         ctx.assert_snapshot(before)
+        bundle = packaged_bundle(bundle)
         pending = ctx.managed(ctx.local / "artifacts" / (".pending-" + uuid.uuid4().hex), create_parent=True)
         target = pending / "bundle" / bundle.name
         target.parent.mkdir(parents=True, mode=0o700)
-        # Developer dist bundles use symlinks into the object/source tree. Materialize every file.
-        shutil.copytree(bundle, target, symlinks=False)
+        # Copy the actual staged distribution, never materialize the developer app.
+        tree_inventory(bundle)  # Refuse links instead of hiding external dependencies.
+        copy_tree(bundle, target)
         # Gecko consumes these development sentinels at startup. Signing them as
         # resources would invalidate a writable installed app's signature on launch.
         if platform.system() == "Darwin":

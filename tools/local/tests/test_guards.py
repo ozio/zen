@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 import uuid
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -233,7 +234,10 @@ class ContainmentTests(SandboxTest):
 class MacPlaygroundTests(SandboxTest):
     @unittest.skipUnless(sys.platform == "darwin", "macOS package signing regression")
     def test_real_signed_package_omits_consumed_gecko_cache_sentinels(self):
-        source = self.root / "engine" / "dist" / "Zen.app"
+        developer = self.root / "engine" / "dist" / "Zen.app"
+        developer.mkdir(parents=True)
+        (developer / "developer-only.txt").write_text("must not ship")
+        source = developer.parent / "zen" / "Zen.app"
         binary = source / "Contents" / "MacOS" / "zen"
         binary.parent.mkdir(parents=True)
         shutil.copyfile("/bin/echo", binary)
@@ -244,6 +248,8 @@ class MacPlaygroundTests(SandboxTest):
         resources = source / "Contents" / "Resources"
         (resources / "browser").mkdir(parents=True)
         (resources / "application.ini").write_text("[App]\nSourceStamp=%s\n" % FORK)
+        with zipfile.ZipFile(resources / "omni.ja", "w") as archive:
+            archive.writestr("chrome.manifest", "# synthetic GRE archive")
         for root in (resources, resources / "browser"):
             (root / ".purgecaches").write_text("\n")
         (resources / "browser" / "keep.txt").write_text("preserve")
@@ -253,12 +259,40 @@ class MacPlaygroundTests(SandboxTest):
         with patch("build.toolchains", return_value={"python": {"path": sys.executable}}), \
                 patch("build.build_env", return_value=dict(os.environ)), \
                 patch.object(self.ctx.runner, "logged"):
-            manifest = build.package(self.ctx, SimpleNamespace(bundle=str(source), signing_identity="-"))
+            manifest = build.package(self.ctx, SimpleNamespace(bundle=str(developer), signing_identity="-"))
         copied = Path(manifest["bundle"])
         self.assertEqual(list(copied.rglob(".purgecaches")), [])
+        self.assertFalse((copied / "developer-only.txt").exists())
+        self.assertTrue((copied / "Contents/Resources/omni.ja").is_file())
         self.assertEqual((copied / "Contents/Resources/browser/keep.txt").read_text(), "preserve")
         self.assertTrue((resources / "browser/.purgecaches").exists())
         self.assertTrue(core.verify_mac_signature(self.ctx, copied, required=True))
+
+    def test_developer_app_is_refused_even_with_materialized_files(self):
+        source = self.root / "Zen.app"
+        resources = source / "Contents/Resources"
+        resources.mkdir(parents=True)
+        with self.assertRaisesRegex(core.DevError, "valid GRE omni.ja"):
+            build.require_packaged_bundle(source)
+        (resources / "omni.ja").write_bytes(b"invalid archive")
+        with self.assertRaisesRegex(core.DevError, "valid GRE omni.ja"):
+            build.require_packaged_bundle(source)
+        with zipfile.ZipFile(resources / "omni.ja", "w") as archive:
+            archive.writestr("chrome.manifest", "fixture")
+        (source / "Contents/Info.plist").write_bytes(plistlib.dumps({
+            "MozillaDeveloperRepoPath": "/missing/repo"}))
+        with self.assertRaisesRegex(core.DevError, "developer repository/object paths"):
+            build.require_packaged_bundle(source)
+
+    def test_packager_refuses_missing_or_ambiguous_staged_distribution(self):
+        developer = self.root / "engine/obj/dist/Zen.app"
+        developer.mkdir(parents=True)
+        with self.assertRaisesRegex(core.DevError, "found 0"):
+            build.packaged_bundle(developer)
+        for product in ("one", "two"):
+            (developer.parent / product / developer.name).mkdir(parents=True)
+        with self.assertRaisesRegex(core.DevError, "found 2"):
+            build.packaged_bundle(developer)
 
     @unittest.skipUnless(sys.platform == "darwin", "macOS signing xattr regression")
     def test_signed_non_macho_metadata_survives_application_copy(self):
@@ -311,6 +345,8 @@ class MacPlaygroundTests(SandboxTest):
             "NSUserActivityTypes": ["NSUserActivityTypeBrowsingWeb"], "CFBundleIconFile": "firefox.icns"}))
         resources = bundle / "Contents" / "Resources"
         resources.mkdir()
+        with zipfile.ZipFile(resources / "omni.ja", "w") as archive:
+            archive.writestr("chrome.manifest", "# synthetic GRE archive")
         (resources / "application.ini").write_text("[App]\nSourceStamp=%s\n" % sha)
         (resources / "firefox.icns").write_bytes(b"original icon")
         files = core.tree_inventory(bundle)

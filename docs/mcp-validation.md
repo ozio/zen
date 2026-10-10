@@ -20,7 +20,7 @@ Validated and installed on 9 October 2026. Future Improvements **9 is complete o
 | Package / evidence root | `/Users/oz/.codex/worktrees/zen-mcp/Zen` |
 | Installed apps | `/Applications/Zen.app`, `/Applications/Zen Playground.app` |
 
-Both packages are sealed and standalone; no external symlinks were found. The deployed Playground inventory matched its signed variant, and the daily app inventory matched the immutable main base after normal startup. Later documentation commits advance `dev` without changing this installed source SHA.
+Correction, 2026-10-10: these packages were sealed and had no external symlinks, but were **not standalone distributions**. The packager copied the materialized developer app instead of the staged `mach package` output. The daily app lacked the GRE `omni.ja` and retained developer repo/object paths in `Info.plist`; after the candidate worktree was removed, startup crashed with `MOZ_CRASH(Failed to get path to repo dir)`. Recreating empty directories temporarily restored startup without changing the app or profile. Earlier signature/inventory and MCP workflow results retain their stated scope, but the standalone acceptance was invalid. The packaging regression fix requires the staged distribution, GRE archive, no developer paths, and startup with development paths unavailable.
 
 ## Agent setup and skills on the current candidate
 
