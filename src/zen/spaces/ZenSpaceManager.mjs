@@ -1794,7 +1794,7 @@ class nsZenWorkspaces {
   }
 
   _cancelSwipeAnimation() {
-    this.#animateTabs(this.getActiveWorkspaceFromCache(), true);
+    return this.#animateTabs(this.getActiveWorkspaceFromCache(), true);
   }
 
   async #performWorkspaceChange(
@@ -1809,7 +1809,7 @@ class nsZenWorkspaces {
       previousWorkspace.uuid === workspace.uuid &&
       !alwaysChange
     ) {
-      this._cancelSwipeAnimation();
+      await this._cancelSwipeAnimation();
       return;
     }
 
@@ -2033,8 +2033,8 @@ class nsZenWorkspaces {
             );
           }
         );
-        if (!this._hasAnimatedBackgrounds) {
-          this._hasAnimatedBackgrounds = true;
+        if (this._hasAnimatedBackgrounds !== nextWorkspace.uuid) {
+          this._hasAnimatedBackgrounds = nextWorkspace.uuid;
           lazy.browserBackgroundElement.style.setProperty(
             "--zen-main-browser-background-old",
             nextGradient
@@ -2140,6 +2140,8 @@ class nsZenWorkspaces {
     const newWorkspaceIndex = workspaces.findIndex(
       w => w.uuid === newWorkspace.uuid
     );
+    // A cancelled swipe settles only the current space back into place.
+    previousWorkspaceIndex ??= newWorkspaceIndex;
     let diff = newWorkspaceIndex - previousWorkspaceIndex;
     if (diff > Math.floor(spaceLen / 2)) {
       diff -= spaceLen;
@@ -2238,6 +2240,10 @@ class nsZenWorkspaces {
         : (elementWorkspaceIndex - previousWorkspaceIndex + spaceLen) %
           spaceLen;
       const willBeVisible = distanceToElement <= totalDistance;
+      element.toggleAttribute(
+        "workspace-transition",
+        shouldAnimate && willBeVisible
+      );
       if (shouldAnimate) {
         if (!willBeVisible) {
           element.style.transform = newTransform;
@@ -2341,6 +2347,11 @@ class nsZenWorkspaces {
     );
     this.#currentSpaceSwitchContext.animations = [];
     this.#setAnimatingBackground(false);
+    for (const element of document.querySelectorAll(
+      "zen-workspace[workspace-transition]"
+    )) {
+      element.removeAttribute("workspace-transition");
+    }
     if (shouldAnimate) {
       for (const data of essentialsAnimData) {
         if (this.creatingWorkspaceId && data.finalOffset) {

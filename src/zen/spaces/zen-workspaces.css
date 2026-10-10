@@ -417,6 +417,17 @@ zen-workspace {
   #navigator-toolbox:not([movingtab], [animating-background]) &:not([swipe-gesture], [active]) {
     -moz-subtree-hidden-only-visually: 1;
   }
+
+  /* A background crossfade must not expose every off-screen tab subtree. */
+  #navigator-toolbox[swipe-gesture]:not([movingtab]) &:not([active], [swipe-visible]),
+  #navigator-toolbox[animating-background]:not([movingtab], [swipe-gesture]) &:not([active], [workspace-transition]) {
+    -moz-subtree-hidden-only-visually: 1;
+  }
+
+  &[swipe-visible],
+  &[workspace-transition] {
+    will-change: transform;
+  }
 }
 
 /** Customizable UI, this is an auto generated ID */

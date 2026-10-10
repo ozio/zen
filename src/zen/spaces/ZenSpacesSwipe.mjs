@@ -38,6 +38,9 @@ export class ZenSpacesSwipe {
   ];
 
   #addSwipe = new ZenSpaceAddSwipe();
+  #animationFrame = 0;
+  #pendingUpdate = null;
+  #visibleWorkspaces = [];
 
   #swipeState = {
     isGestureActive: false,
@@ -140,6 +143,7 @@ export class ZenSpacesSwipe {
 
   #toggleSwipeGestureAttr(enable) {
     const elements = [
+      "#navigator-toolbox",
       "zen-workspace",
       "#zen-sidebar-foot-buttons",
       "#tabbrowser-arrowscrollbox",
@@ -159,8 +163,26 @@ export class ZenSpacesSwipe {
       return;
     }
 
+    if (this.isGestureActive) {
+      this.#onSwipeAnimationEnd();
+    }
     gZenFolders.cancelPopupTimer();
 
+    // Keep distant spaces hidden instead of laying out every tab in every
+    // space when the gesture or background animation starts. Both neighbours
+    // stay ready so reversing a gesture does not reveal an empty strip.
+    const workspaces = ws.getWorkspaces();
+    const currentWorkspace = ws.getActiveWorkspaceFromCache();
+    const currentIndex = workspaces.indexOf(currentWorkspace);
+    this.#visibleWorkspaces = workspaces
+      .filter((workspace, index) => {
+        const distance = Math.abs(index - currentIndex);
+        return distance <= 1 || distance === workspaces.length - 1;
+      })
+      .map(workspace => ws.workspaceElement(workspace.uuid));
+    for (const element of this.#visibleWorkspaces) {
+      element?.setAttribute("swipe-visible", "true");
+    }
     this.#toggleSwipeGestureAttr(true);
     document.addEventListener("popupshown", this, { once: true });
 
@@ -174,6 +196,7 @@ export class ZenSpacesSwipe {
       isGestureActive: true,
       lastDelta: 0,
       direction: null,
+      stripWidth: this.#stripWidth,
       deltaMultiplier: Services.prefs.getIntPref(
         "zen.workspaces.swipe-actions.delta-multiplier"
       ),
@@ -196,7 +219,7 @@ export class ZenSpacesSwipe {
       return;
     }
 
-    const stripWidth = this.#stripWidth;
+    const stripWidth = this.#swipeState.stripWidth;
 
     event.preventDefault();
     event.stopPropagation();
@@ -216,28 +239,63 @@ export class ZenSpacesSwipe {
     }
 
     if (Math.abs(delta) > 0.9) {
-      delete ws._hasAnimatedBackgrounds;
-      this.#swipeState.direction = delta > 0 ? "left" : "right";
+      const direction = delta > 0 ? "left" : "right";
+      if (direction !== this.#swipeState.direction) {
+        this.#swipeState.direction = direction;
+      }
     }
 
-    const currentWorkspace = ws.getActiveWorkspaceFromCache();
     if (!this.#swipeState.action) {
       this.#decideAction(translateX);
     }
     this.#applySwipeThreshold(event);
 
+    // Gecko can deliver several updates between paints. Process their input
+    // and thresholds immediately, but only write the latest visual state once
+    // per frame. This also avoids repeatedly invalidating the tab subtrees.
+    this.#pendingUpdate = { translateX, delta: event.delta };
+    if (!this.#animationFrame) {
+      this.#animationFrame = window.requestAnimationFrame(() => {
+        this.#animationFrame = 0;
+        this.#renderSwipe();
+      });
+    }
+  }
+
+  #renderSwipe() {
+    const update = this.#pendingUpdate;
+    if (!update) {
+      return;
+    }
+    this.#pendingUpdate = null;
+    const ws = gZenWorkspaces;
+    const currentWorkspace = ws.getActiveWorkspaceFromCache();
+
     switch (this.#swipeState.action) {
       case ZenSpacesSwipe.ACTIONS.LIBRARY:
-        lazy.ZenLibrary.swipeProgress(translateX / stripWidth);
+        lazy.ZenLibrary.swipeProgress(
+          update.translateX / this.#swipeState.stripWidth
+        );
         ws._organizeWorkspaceStripLocations(currentWorkspace, true, 0);
         return;
       case ZenSpacesSwipe.ACTIONS.ADD_SPACE:
-        this.#addSwipe.swipeProgress(event.delta);
+        this.#addSwipe.swipeProgress(update.delta);
         return;
     }
 
     // Apply a translateX to the tab strip to give the user feedback on the swipe
-    ws._organizeWorkspaceStripLocations(currentWorkspace, true, translateX);
+    ws._organizeWorkspaceStripLocations(
+      currentWorkspace,
+      true,
+      update.translateX
+    );
+  }
+
+  #cancelPendingFrame() {
+    if (this.#animationFrame) {
+      window.cancelAnimationFrame(this.#animationFrame);
+      this.#animationFrame = 0;
+    }
   }
 
   /**
@@ -267,11 +325,14 @@ export class ZenSpacesSwipe {
   async #handleSwipeEnd(event) {
     const ws = gZenWorkspaces;
 
-    if (!ws.workspaceEnabled) {
+    if (!ws.workspaceEnabled || !this.isGestureActive) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
+    this.#cancelPendingFrame();
+    this.#renderSwipe();
+    this.#swipeState.isCompleting = true;
     const isRTL = document.documentElement.matches(":-moz-locale-dir(rtl)");
     const moveForward =
       (event.direction === SimpleGestureEvent.DIRECTION_RIGHT) !== isRTL;
@@ -293,6 +354,8 @@ export class ZenSpacesSwipe {
 
   #onSwipeAnimationEnd() {
     const ws = gZenWorkspaces;
+    this.#cancelPendingFrame();
+    this.#pendingUpdate = null;
 
     switch (this.#swipeState.action) {
       case ZenSpacesSwipe.ACTIONS.LIBRARY:
@@ -300,6 +363,20 @@ export class ZenSpacesSwipe {
         break;
       case ZenSpacesSwipe.ACTIONS.ADD_SPACE:
         this.#addSwipe.onSwipeAnimationEnd();
+        break;
+      default:
+        if (
+          this.isGestureActive &&
+          !this.#swipeState.isCompleting &&
+          !ws.isChangingWorkspace &&
+          !ws._animatingChange
+        ) {
+          ws._organizeWorkspaceStripLocations(
+            ws.getActiveWorkspaceFromCache(),
+            true,
+            0
+          );
+        }
         break;
     }
 
@@ -313,6 +390,10 @@ export class ZenSpacesSwipe {
     };
 
     this.#toggleSwipeGestureAttr(false);
+    for (const element of this.#visibleWorkspaces) {
+      element?.removeAttribute("swipe-visible");
+    }
+    this.#visibleWorkspaces = [];
     gZenUIManager.tabsWrapper.style.removeProperty("scrollbar-width");
     [lazy.browserBackgroundElement, lazy.toolbarBackgroundElement].forEach(
       element => {
