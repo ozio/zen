@@ -108,6 +108,7 @@ function setup({ count = 6, active = 2, rtl = false, natural = false } = {}) {
     getActiveWorkspaceFromCache: () => workspaces[active],
     workspaceElement: (uuid) => spaces.get(uuid),
     _organizeWorkspaceStripLocations: (...args) => calls.push(args),
+    _resetWorkspaceSwipe: () => calls.push([workspaces[active], true, 0]),
     updateTabsContainers() {},
     changeWorkspaceShortcut: async (...args) => switches.push(args),
   };
@@ -350,13 +351,15 @@ test("the background is prepared once per neighbour and refreshed when reversing
   const manager = s.context.window.gZenWorkspaces;
   manager.getWorkspaces = () => s.workspaces;
   manager.workspaceElement = (uuid) => s.spaces.get(uuid);
+  manager.getActiveWorkspaceFromCache = () => s.workspaces[2];
+  const noise = [];
   s.context.gZenThemePicker = {
     getGradientForWorkspace: (workspace) => ({
       gradient: workspace.uuid,
       toolbarGradient: workspace.uuid + "-toolbar",
       grain: 0,
     }),
-    updateNoise() {},
+    updateNoise: (value) => noise.push(value),
   };
   const current = s.workspaces[2];
   const background = s.nodes.get("zen-browser-background");
@@ -382,4 +385,9 @@ test("the background is prepared once per neighbour and refreshed when reversing
     ).length,
     3,
   );
+  assert.ok(s.nav.attributes.has("animating-background"));
+  manager._resetWorkspaceSwipe();
+  assert.ok(!s.nav.attributes.has("animating-background"));
+  assert.equal(noise.at(-1), 0, "Cancelling restores the current space's grain");
+  assert.equal(s.spaces.get(current.uuid).style.transform, "translateX(0%)");
 });

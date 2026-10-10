@@ -371,11 +371,7 @@ export class ZenSpacesSwipe {
           !ws.isChangingWorkspace &&
           !ws._animatingChange
         ) {
-          ws._organizeWorkspaceStripLocations(
-            ws.getActiveWorkspaceFromCache(),
-            true,
-            0
-          );
+          ws._resetWorkspaceSwipe();
         }
         break;
     }

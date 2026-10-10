@@ -1797,6 +1797,15 @@ class nsZenWorkspaces {
     return this.#animateTabs(this.getActiveWorkspaceFromCache(), true);
   }
 
+  _resetWorkspaceSwipe() {
+    const workspace = this.getActiveWorkspaceFromCache();
+    this._organizeWorkspaceStripLocations(workspace, true);
+    this.#setAnimatingBackground(false);
+    gZenThemePicker.updateNoise(
+      gZenThemePicker.getGradientForWorkspace(workspace).grain
+    );
+  }
+
   async #performWorkspaceChange(
     workspace,
     { onInit = false, alwaysChange = false, whileScrolling = false } = {}
