@@ -4,6 +4,45 @@ Validated and installed on 9 October 2026. Future Improvements **9 is complete o
 
 ## Current daily candidate, 11 October 2026
 
+Installed source: `45b730cc0d8ea47284bd691c905a57cfd3ec5efd`, retained in `/Users/oz/Projects/Zen`. This adds the Library release/visibility and inactive-Space layout changes described in [the follow-up performance report](space-swipe-performance.md#повторная-диагностика-11-октября-2026-года). Firefox, MCP, native code, preferences and build configuration are unchanged from `db72a474`; later repository commits change documentation only.
+
+| Property | Verified value |
+|---|---|
+| Main binary SHA-256 | `b13399d3f95d5e3222a27aafac5decffd45120060cdc5ecfb2f39eac93eef5c0` |
+| Main package tree SHA-256 | `f2199ef4e76ee11bf74a97f7f86796e45958bccf1f3e31e04eb77f6a80658d20` |
+| Playground tree SHA-256 | `7947b90f0390feadf6ba17ea13d4baba26e71a71bc2f42cf915c66dc5fa74aaf` |
+| Build / host | Matching successful full build; macOS 26.6.2 ARM64, Clang 22.1.8, SDK 26.5 |
+| Signing | Same Developer ID identity; complete deep/strict verification after launch; no notarization |
+| Immediate backup | `2026-10-11T03-10-45.188593_00-00-5780f5e3`, containing the standalone `db72a474` app, personal profile and registries |
+
+The independent compatibility receipt binds both immutable signed packages. The original clean Playground profile was retained separately from the personal-derived diagnostic copy and restored before qualification. With source/engine/object paths unavailable, it retained 20 synthetic tabs with their order and active Space, a persistent cookie and five signed active extensions. Real Enpass native greeting/status, dedicated FoxPilot action and native UI MCP passed after restart. Enpass unlock/autofill, the other extensions' full service workflows and the unchanged MCP stress matrix were not repeated.
+
+The daily app was quit gracefully and installed through guarded preview/apply. Full backup inventories and rollback preview passed before normal `open -a /Applications/Zen.app`. The interval from verified exit to launch request was **13.275 seconds**: preview 0.744 s, apply 10.590 s, rollback preview 1.868 s. Exact session read-back and correction completed **348.229 s after the launch request**; the browser was open throughout that work.
+
+Main PID 92605 opened the original per-install registered profile with ordinary launch flags. The different global default in `profiles.ini` was left intact. All **1499 non-managed-empty tabs** (1500 in the main API including its managed empty tab), **7 Spaces**, **55 folders** and **11 extension versions/enabled states** survived. A three-tab folder shifted during restore; it was returned to the position in the sealed pre-install SessionStore. The pre-quit selection was independently hashed and restored. At the initial completed read-back, full hashes matched tab order, pinning, essential state, Space/group/container links, window/Space/folder/group metadata, active Space and selected-tab semantics.
+
+The user subsequently confirmed using the reopened browser. Later live selection/order/relationship changes were retained rather than overwriting that new session; every original URL with its multiplicity, Space configuration and extension versions/enabled states still matched. The extra Enpass status attempt through page DevTools returned `evaluation_failed`, so it does not prove daily native transport; its temporary extension tab was closed. Native Enpass transport is qualified in the clean Playground; daily unlock/autofill was not repeated.
+
+Installed source, executable, complete file inventory and post-launch deep/strict signature match the package. HTTP/HTTPS still target `/Applications/Zen.app`. Main FoxPilot on 8089 correlates with the verified main session; the 8091 broker has no Playground browser because Playground is stopped. Built-in MCP works on 3923, updater protection remains enabled, and main has no Marionette launch flag/listener.
+
+Evidence: `.zen-local/swipe-main-followup/`, `.zen-local/compatibility/45b730cc0d8ea47284bd691c905a57cfd3ec5efd.json`, `.zen-local/main-install.json` and `.zen-local/main-post-install.json`. Physical trackpad acceptance and the remaining visible pauses are still open; installation does not close backlog item 3.
+
+Retained Playground launch:
+
+```sh
+python3.11 tools/local/dev.py run playground --sha 45b730cc0d8ea47284bd691c905a57cfd3ec5efd
+```
+
+Rollback preview, after normally stopping main:
+
+```sh
+python3.11 tools/local/dev.py rollback --backup 2026-10-11T03-10-45.188593_00-00-5780f5e3
+```
+
+This backup returns to the preceding standalone `db72a474` app. Inspect the preview before adding `--apply`. For an evolved profile, follow [the rollback procedure](../DEVELOPMENT.md#rollback) and review `--restore-profile-snapshot`, preserving newer user data. The earlier `f58d2508` and original official-release backups remain separate.
+
+## Previous Space-swipe candidate, earlier 11 October 2026
+
 Installed source: `db72a474adec9f55b64600bd00144f8fd69160e1`, retained in `/Users/oz/Projects/Zen`. This adds the Space swipe changes described in [the performance report](space-swipe-performance.md). Firefox, MCP, native code, preferences and build configuration are unchanged from the preceding `f58d2508` package. Later repository commits change documentation only.
 
 | Property | Verified value |

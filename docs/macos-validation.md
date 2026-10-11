@@ -1,6 +1,6 @@
 # macOS validation, 2026-10-08
 
-The current installed candidate is `db72a474adec9f55b64600bd00144f8fd69160e1`, adding frame-coalesced Space swipes and cancellation cleanup. It retains standalone packaging, built-in MCP with Codex/Claude Code setup and skills, Move Tab, automatic PiP, Tab site search, the red Playground identity, separate FoxPilot connections and Russian page translation. It is signed with Developer ID Application; notarization was declined by the user. See [the latest daily-installation checks, package root and rollback](mcp-validation.md) and [the swipe measurements and pending physical acceptance](space-swipe-performance.md). Use [MAIN_UPDATE.md](../MAIN_UPDATE.md) for routine promotion. The rest of this document records the earlier initial setup candidate and its original-release rollback.
+The current installed candidate is `45b730cc0d8ea47284bd691c905a57cfd3ec5efd`, adding Library release/visibility and inactive-Space layout improvements on top of frame-coalesced Space swipes. It retains standalone packaging, built-in MCP with Codex/Claude Code setup and skills, Move Tab, automatic PiP, Tab site search, the red Playground identity, separate FoxPilot connections and Russian page translation. It is signed with Developer ID Application; notarization was declined by the user. See [the latest daily-installation checks, package root and rollback](mcp-validation.md) and [the swipe measurements and pending physical acceptance](space-swipe-performance.md). Use [MAIN_UPDATE.md](../MAIN_UPDATE.md) for routine promotion. The rest of this document records the earlier initial setup candidate and its original-release rollback.
 
 The personal fork is [ozio/zen](https://github.com/ozio/zen), on `dev`. Its native build is installed at `/Applications/Zen.app` and uses the existing personal profile. The separate `/Applications/Zen Playground.app` runs the managed `.zen-local/profiles/playground` profile. No personal profile, cookies, account state or extension storage were imported into it.
 
@@ -42,7 +42,7 @@ On this prepared Mac, launch the current retained candidate from [the latest val
 python3.11 tools/local/dev.py \
   --root /Users/oz/Projects/Zen \
   --toolchains /Users/oz/Projects/Zen/.zen-local/toolchains \
-  run playground --sha f58d2508b35519c37bbd2a2283a53bdba5c32777
+  run playground --sha 45b730cc0d8ea47284bd691c905a57cfd3ec5efd
 ```
 
 Close the existing Playground normally before restarting it. Always launch it through this command with the explicit profile. Opening `Zen Playground.app` directly from Finder/Dock invokes Firefox's ordinary default-profile selection; it does not establish the managed Playground identity. The native bridge refuses a mismatched instance rather than attaching to it. Preserve any unrelated profile such a manual launch creates.
