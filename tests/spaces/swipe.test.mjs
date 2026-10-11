@@ -413,3 +413,93 @@ test("the background is prepared once per neighbour and refreshed when reversing
   );
   assert.equal(s.spaces.get(current.uuid).style.transform, "translateX(0%)");
 });
+
+test("Library closing leaves stationary workspace input and tab styles untouched", () => {
+  const s = setup();
+  s.library.isLibraryOpen = true;
+  let rebuilds = 0;
+  s.ws.updateTabsContainers = () => rebuilds++;
+  s.event("MozSwipeGestureStart");
+  assert.ok(!s.nav.attributes.has("swipe-gesture"));
+  assert.ok(
+    [...s.spaces.values()].every((e) => !e.attributes.has("swipe-visible")),
+  );
+  s.event("MozSwipeGestureUpdate", 0.03);
+  s.paint();
+  s.event("MozSwipeGesture", 0, 2);
+  s.event("MozSwipeGestureEnd");
+  assert.equal(rebuilds, 0);
+  assert.equal(s.nodes.get("zen-browser-background").writes.length, 0);
+  assert.equal(s.swipe.isGestureActive, false);
+});
+
+test("an edge Library opening does not prepare or clean up workspace visuals", () => {
+  const s = setup({ active: 5 });
+  s.library.readySwipeOpenLibrary = () => true;
+  let rebuilds = 0;
+  s.ws.updateTabsContainers = () => rebuilds++;
+  s.event("MozSwipeGestureStart");
+  s.event("MozSwipeGestureUpdate", -0.03);
+  s.paint();
+  assert.ok(!s.nav.attributes.has("swipe-gesture"));
+  assert.ok(
+    [...s.spaces.values()].every((e) => !e.attributes.has("swipe-visible")),
+  );
+  s.event("MozSwipeGestureEnd");
+  assert.equal(rebuilds, 0);
+  assert.equal(s.nodes.get("zen-toolbar-background").writes.length, 0);
+});
+
+test("an edge gesture toward a Space still prepares neighbours and restores them", () => {
+  const s = setup({ active: 5 });
+  s.library.readySwipeOpenLibrary = () => true;
+  let rebuilds = 0;
+  s.ws.updateTabsContainers = () => rebuilds++;
+  s.event("MozSwipeGestureStart");
+  assert.ok(!s.nav.attributes.has("swipe-gesture"));
+  s.event("MozSwipeGestureUpdate", 0.03);
+  assert.ok(s.nav.attributes.has("swipe-gesture"));
+  assert.deepEqual(
+    s.workspaces.flatMap((w, i) =>
+      s.spaces.get(w.uuid).attributes.has("swipe-visible") ? [i] : [],
+    ),
+    [0, 4, 5],
+  );
+  s.event("MozSwipeGestureEnd");
+  assert.ok(!s.nav.attributes.has("swipe-gesture"));
+  assert.ok(
+    [...s.spaces.values()].every((e) => !e.attributes.has("swipe-visible")),
+  );
+  assert.equal(rebuilds, 1);
+});
+
+test("a new Library gesture cleans up the interrupted Space gesture once", () => {
+  const s = setup();
+  let rebuilds = 0;
+  s.ws.updateTabsContainers = () => rebuilds++;
+  s.event("MozSwipeGestureStart");
+  assert.ok(s.nav.attributes.has("swipe-gesture"));
+  s.library.isLibraryOpen = true;
+  s.event("MozSwipeGestureStart");
+  assert.ok(!s.nav.attributes.has("swipe-gesture"));
+  assert.ok(
+    [...s.spaces.values()].every((e) => !e.attributes.has("swipe-visible")),
+  );
+  s.event("MozSwipeGestureEnd");
+  assert.equal(rebuilds, 1);
+});
+
+test("a zero-delta edge update does not prepare stationary workspace visuals", () => {
+  const s = setup({ active: 5 });
+  s.library.readySwipeOpenLibrary = () => true;
+  s.event("MozSwipeGestureStart");
+  s.event("MozSwipeGestureUpdate", 0);
+  assert.ok(!s.nav.attributes.has("swipe-gesture"));
+  assert.ok(
+    [...s.spaces.values()].every((e) => !e.attributes.has("swipe-visible")),
+  );
+  s.event("MozSwipeGestureUpdate", -0.03);
+  s.paint();
+  assert.ok(!s.nav.attributes.has("swipe-gesture"));
+  s.event("MozSwipeGestureEnd");
+});

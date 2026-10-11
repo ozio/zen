@@ -168,22 +168,6 @@ export class ZenSpacesSwipe {
     }
     gZenFolders.cancelPopupTimer();
 
-    // Keep distant spaces hidden instead of laying out every tab in every
-    // space when the gesture or background animation starts. Both neighbours
-    // stay ready so reversing a gesture does not reveal an empty strip.
-    const workspaces = ws.getWorkspaces();
-    const currentWorkspace = ws.getActiveWorkspaceFromCache();
-    const currentIndex = workspaces.indexOf(currentWorkspace);
-    this.#visibleWorkspaces = workspaces
-      .filter((workspace, index) => {
-        const distance = Math.abs(index - currentIndex);
-        return distance <= 1 || distance === workspaces.length - 1;
-      })
-      .map((workspace) => ws.workspaceElement(workspace.uuid));
-    for (const element of this.#visibleWorkspaces) {
-      element?.setAttribute("swipe-visible", "true");
-    }
-    this.#toggleSwipeGestureAttr(true);
     document.addEventListener("popupshown", this, { once: true });
 
     lazy.ZenLibrary.swipeReset();
@@ -208,8 +192,33 @@ export class ZenSpacesSwipe {
     };
     if (libraryOpen) {
       lazy.ZenLibrary.startSwipe();
+    } else if (!this.#swipeState.allowed.library) {
+      this.#prepareWorkspaceVisuals();
     }
     this.#applySwipeThreshold(event);
+  }
+
+  #prepareWorkspaceVisuals() {
+    if (this.#swipeState.workspaceVisualsPrepared) {
+      return;
+    }
+    this.#swipeState.workspaceVisualsPrepared = true;
+    const ws = gZenWorkspaces;
+    // A Library swipe leaves the workspace strips stationary. Avoid changing
+    // their inherited input styles and rebuilding every tab at its release.
+    // At an edge, wait until the first update determines which panel moves.
+    const workspaces = ws.getWorkspaces();
+    const currentIndex = workspaces.indexOf(ws.getActiveWorkspaceFromCache());
+    this.#visibleWorkspaces = workspaces
+      .filter((workspace, index) => {
+        const distance = Math.abs(index - currentIndex);
+        return distance <= 1 || distance === workspaces.length - 1;
+      })
+      .map((workspace) => ws.workspaceElement(workspace.uuid));
+    for (const element of this.#visibleWorkspaces) {
+      element?.setAttribute("swipe-visible", "true");
+    }
+    this.#toggleSwipeGestureAttr(true);
   }
 
   #handleSwipeUpdate(event) {
@@ -247,6 +256,12 @@ export class ZenSpacesSwipe {
 
     if (!this.#swipeState.action) {
       this.#decideAction(translateX);
+    }
+    if (
+      this.#swipeState.action !== ZenSpacesSwipe.ACTIONS.LIBRARY &&
+      (translateX !== 0 || !this.#swipeState.allowed.library)
+    ) {
+      this.#prepareWorkspaceVisuals();
     }
     this.#applySwipeThreshold(event);
 
@@ -379,6 +394,7 @@ export class ZenSpacesSwipe {
         break;
     }
 
+    const workspaceVisualsPrepared = this.#swipeState.workspaceVisualsPrepared;
     // Reset swipe state
     this.#swipeState = {
       isGestureActive: false,
@@ -388,19 +404,21 @@ export class ZenSpacesSwipe {
       allowed: { library: false, addSpace: false },
     };
 
-    this.#toggleSwipeGestureAttr(false);
-    for (const element of this.#visibleWorkspaces) {
-      element?.removeAttribute("swipe-visible");
+    if (workspaceVisualsPrepared) {
+      this.#toggleSwipeGestureAttr(false);
+      for (const element of this.#visibleWorkspaces) {
+        element?.removeAttribute("swipe-visible");
+      }
+      this.#visibleWorkspaces = [];
+      gZenUIManager.tabsWrapper.style.removeProperty("scrollbar-width");
+      [lazy.browserBackgroundElement, lazy.toolbarBackgroundElement].forEach(
+        (element) => {
+          element.style.setProperty("--zen-background-opacity", "1");
+        },
+      );
+      delete ws._hasAnimatedBackgrounds;
+      ws.updateTabsContainers();
     }
-    this.#visibleWorkspaces = [];
-    gZenUIManager.tabsWrapper.style.removeProperty("scrollbar-width");
-    [lazy.browserBackgroundElement, lazy.toolbarBackgroundElement].forEach(
-      (element) => {
-        element.style.setProperty("--zen-background-opacity", "1");
-      },
-    );
-    delete ws._hasAnimatedBackgrounds;
-    ws.updateTabsContainers();
     document.removeEventListener("popupshown", this, { once: true });
   }
 
