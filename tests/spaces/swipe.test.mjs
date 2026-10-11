@@ -121,8 +121,13 @@ function setup({ count = 6, active = 2, rtl = false, natural = false } = {}) {
       }
       return selector === "#navigator-toolbox" ? [nav] : [];
     },
-    addEventListener() {},
-    removeEventListener() {},
+    listeners: new Map(),
+    addEventListener(type, listener, options) {
+      this.listeners.set(type, { listener, once: options?.once });
+    },
+    removeEventListener(type) {
+      this.listeners.delete(type);
+    },
   };
   const window = {
     requestAnimationFrame(callback) {
@@ -177,16 +182,17 @@ function setup({ count = 6, active = 2, rtl = false, natural = false } = {}) {
     library,
     add,
     frames,
+    document,
     context,
     boundsReads: () => boundsReads,
-    event(type, delta = 0, direction = 0) {
+    event(type, delta = 0, direction = 0, target = { closest: () => false }) {
       const event = {
         type,
         delta,
         direction,
         DIRECTION_LEFT: 1,
         DIRECTION_RIGHT: 2,
-        target: { closest: () => false },
+        target,
         preventDefault() {},
         stopPropagation() {},
       };
@@ -502,4 +508,34 @@ test("a zero-delta edge update does not prepare stationary workspace visuals", (
   s.paint();
   assert.ok(!s.nav.attributes.has("swipe-gesture"));
   s.event("MozSwipeGestureEnd");
+});
+
+test("a hover tooltip cannot cancel an active Library gesture", () => {
+  const s = setup();
+  s.library.isLibraryOpen = true;
+  let cleanups = 0;
+  s.library.swipeAnimationEnd = () => cleanups++;
+  s.event("MozSwipeGestureStart");
+  s.event("MozSwipeGestureUpdate", 0.03);
+  s.event("popupshown", 0, 0, { localName: "tooltip" });
+  assert.equal(s.swipe.isGestureActive, true);
+  assert.equal(cleanups, 0);
+  s.paint();
+  assert.ok(s.calls.some((call) => call[0] === "library"));
+  s.event("MozSwipeGestureEnd");
+  assert.equal(cleanups, 1);
+  assert.ok(!s.document.listeners.has("popupshown"));
+});
+
+test("a menu after a tooltip still interrupts the gesture and removes its listener", () => {
+  const s = setup();
+  s.event("MozSwipeGestureStart");
+  const listener = s.document.listeners.get("popupshown");
+  assert.equal(listener.once, undefined);
+  s.event("popupshown", 0, 0, { localName: "tooltip" });
+  assert.ok(s.document.listeners.has("popupshown"));
+  s.event("popupshown", 0, 0, { localName: "menupopup" });
+  assert.equal(s.swipe.isGestureActive, false);
+  assert.ok(!s.document.listeners.has("popupshown"));
+  assert.ok(!s.nav.attributes.has("swipe-gesture"));
 });

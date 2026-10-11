@@ -107,8 +107,14 @@ export class ZenSpacesSwipe {
         break;
       // A popup taking over mid-swipe ends the swipe just the same.
       case "MozSwipeGestureEnd":
-      case "popupshown":
         this.#onSwipeAnimationEnd();
+        break;
+      case "popupshown":
+        // Hover tooltips do not take input. On a dense strip they can appear
+        // during a slow frame and must not cancel the still active gesture.
+        if (event.target.localName !== "tooltip") {
+          this.#onSwipeAnimationEnd();
+        }
         break;
     }
   }
@@ -168,7 +174,7 @@ export class ZenSpacesSwipe {
     }
     gZenFolders.cancelPopupTimer();
 
-    document.addEventListener("popupshown", this, { once: true });
+    document.addEventListener("popupshown", this);
 
     lazy.ZenLibrary.swipeReset();
     this.#addSwipe.swipeReset();
@@ -419,7 +425,7 @@ export class ZenSpacesSwipe {
       delete ws._hasAnimatedBackgrounds;
       ws.updateTabsContainers();
     }
-    document.removeEventListener("popupshown", this, { once: true });
+    document.removeEventListener("popupshown", this);
   }
 
   get isGestureActive() {
