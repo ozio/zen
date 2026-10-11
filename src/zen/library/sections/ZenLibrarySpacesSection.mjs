@@ -70,20 +70,20 @@ export class ZenLibrarySpacesSection extends MozLitElement {
 
   #observer = { observe: () => this.requestUpdate() };
   #onDataChanged = () => this.requestUpdate();
-  #onStripEvent = event => {
-    if (this.contains(event.target)) {
+  #onStripEvent = (event) => {
+    if (!this.#isVisible || this.contains(event.target)) {
       return;
     }
     if (
       event.type === "TabAttrModified" &&
-      !event.detail?.changed?.some(attr => SHOWN_ATTRIBUTES.includes(attr))
+      !event.detail?.changed?.some((attr) => SHOWN_ATTRIBUTES.includes(attr))
     ) {
       return;
     }
     this.#scheduleStripsRefresh(
       event.type === "TabAttrModified"
         ? event.target.getAttribute("zen-workspace-id")
-        : null
+        : null,
     );
   };
   #refreshTimer = null;
@@ -92,7 +92,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
   #resizeObserver = new ResizeObserver(() => this.#updateLibraryWidth());
   /** @type {IntersectionObserver?} Fills a card once it is in view */
   #cardObserver = null;
-  #onScroll = event => {
+  #onScroll = (event) => {
     if (event.target.classList.contains("zen-library-space-body")) {
       this.#updateScrollBorders(event.target);
     }
@@ -102,7 +102,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     this.#dnd.clearDragOverVisuals();
     this.#refreshStrips();
   };
-  #onCopyDragEnd = event => {
+  #onCopyDragEnd = (event) => {
     gBrowser.tabContainer.tabDragAndDrop.handle_dragend(event);
     this.#onDragEnd();
   };
@@ -176,6 +176,9 @@ export class ZenLibrarySpacesSection extends MozLitElement {
 
   updated(changedProperties) {
     super.updated(changedProperties);
+    if (!this.#isVisible) {
+      return;
+    }
     this.#fillStrips(false, null, this.#activeCards());
     this.#watchCards();
     this.#updateLibraryWidth();
@@ -217,13 +220,17 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     this.#watchCards();
   }
 
+  get #isVisible() {
+    return !this.hidden && this.library?.hasAttribute("open");
+  }
+
   /**
    * @returns {Element[]} The card of the space in view, the one worth having
    *   ready before the library has even finished opening
    */
   #activeCards() {
     const active = gZenWorkspaces.activeWorkspace;
-    return this.#cards.filter(card => card.dataset.uuid === active);
+    return this.#cards.filter((card) => card.dataset.uuid === active);
   }
 
   /**
@@ -231,21 +238,24 @@ export class ZenLibrarySpacesSection extends MozLitElement {
    * them is never: the cards sit in a strip that scrolls sideways.
    */
   #watchCards() {
+    if (!this.#isVisible) {
+      return;
+    }
     const list = this.querySelector(".zen-library-spaces");
     if (!list) {
       return;
     }
     this.#cardObserver ??= new IntersectionObserver(
-      entries => {
+      (entries) => {
         const coming = entries
-          .filter(entry => entry.isIntersecting)
-          .map(entry => entry.target);
+          .filter((entry) => entry.isIntersecting)
+          .map((entry) => entry.target);
         if (coming.length) {
           this.#fillStrips(false, null, coming);
         }
       },
       // Enough that a card is ready by the time it is scrolled to.
-      { root: list, rootMargin: "300px" }
+      { root: list, rootMargin: "300px" },
     );
     for (const card of this.#cards) {
       this.#cardObserver.observe(card);
@@ -255,7 +265,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
   #updateLibraryWidth() {
     const side = this.library?.querySelector("#zen-library-side");
     const list = this.querySelector(".zen-library-spaces");
-    if (!side || !list || this.hidden) {
+    if (!side || !list || !this.#isVisible) {
       return;
     }
     const sideWidth = window.windowUtils.getBoundsWithoutFlushing(side).width;
@@ -284,7 +294,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
       library.removeAttribute("sizing");
       library.removeEventListener("transitionend", onEnd);
     };
-    const onEnd = event => {
+    const onEnd = (event) => {
       if (event.target === library && event.propertyName === "width") {
         done();
       }
@@ -330,7 +340,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     body.toggleAttribute("scrolled-top", body.scrollTop > 1);
     body.toggleAttribute(
       "scrolled-bottom",
-      max > 1 && body.scrollTop < max - 1
+      max > 1 && body.scrollTop < max - 1,
     );
   }
 
@@ -384,6 +394,9 @@ export class ZenLibrarySpacesSection extends MozLitElement {
    *   are worth the work
    */
   #fillStrips(rebuild = false, uuids = null, cards = this.#cards) {
+    if (!this.#isVisible) {
+      return;
+    }
     for (const card of cards) {
       if (rebuild && uuids && !uuids.has(card.dataset.uuid)) {
         continue;
@@ -445,7 +458,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
   #rowPositions(strip) {
     const positions = new Map();
     for (const row of strip.querySelectorAll(
-      "tab, .tab-group-label-container"
+      "tab, .tab-group-label-container",
     )) {
       const id = row.id || row.closest("[id]")?.id;
       if (id) {
@@ -467,7 +480,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
       return;
     }
     for (const row of strip.querySelectorAll(
-      "tab, .tab-group-label-container"
+      "tab, .tab-group-label-container",
     )) {
       const id = row.id || row.closest("[id]")?.id;
       const old = id && before.get(id);
@@ -481,7 +494,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
         gZenUIManager.elementAnimate(
           row,
           { x: [dx, 0], y: [dy, 0] },
-          { duration: 180, easing: "ease-out" }
+          { duration: 180, easing: "ease-out" },
         );
       }
     }
@@ -567,23 +580,23 @@ export class ZenLibrarySpacesSection extends MozLitElement {
       ?.querySelector(".tab-group-folder-icon");
     if (icon && realIcon) {
       icon.replaceChildren(
-        ...[...realIcon.children].map(child => child.cloneNode(true))
+        ...[...realIcon.children].map((child) => child.cloneNode(true)),
       );
     }
   }
 
-  #containEvent = event => {
+  #containEvent = (event) => {
     event.stopPropagation();
   };
 
   #containHover = {
-    handleEvent: event => event.stopPropagation(),
+    handleEvent: (event) => event.stopPropagation(),
     capture: true,
   };
 
   #onStripClick = {
     capture: true,
-    handleEvent: event => {
+    handleEvent: (event) => {
       const label = event.target.closest(".tab-group-label-container");
       if (label) {
         if (event.target.closest(".tab-reset-button")) {
@@ -626,7 +639,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
 
   #containInput = {
     capture: true,
-    handleEvent: event => {
+    handleEvent: (event) => {
       if (event.target.closest(`tab, ${GROUP_TAGS.join()}`)) {
         event.stopPropagation();
       }
@@ -639,7 +652,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
    *
    * @param {MouseEvent} event
    */
-  #onStripContextMenu = event => {
+  #onStripContextMenu = (event) => {
     let real = null;
     const label = event.target.closest(".tab-group-label-container");
     if (label) {
@@ -700,7 +713,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     return null;
   }
 
-  #onStripDragStart = event => {
+  #onStripDragStart = (event) => {
     const target =
       event.target.nodeType === Node.TEXT_NODE
         ? event.target.parentElement
@@ -712,7 +725,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     }
   };
 
-  #onStripDrop = event => {
+  #onStripDrop = (event) => {
     this.#dnd.handle_drop(event);
     this.#refreshStrips();
   };
@@ -734,8 +747,8 @@ export class ZenLibrarySpacesSection extends MozLitElement {
           @mouseover=${this.#containHover}
           @mouseout=${this.#containHover}
           @dragstart=${this.#onStripDragStart}
-          @dragover=${event => this.#dnd.handle_dragover(event)}
-          @dragleave=${event => this.#dnd.handle_dragleave(event)}
+          @dragover=${(event) => this.#dnd.handle_dragover(event)}
+          @dragleave=${(event) => this.#dnd.handle_dragleave(event)}
           @drop=${this.#onStripDrop}
         ></div>
       </div>
@@ -763,7 +776,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     gZenThemePicker.openThemePickerForWorkspace(
       workspace,
       event.currentTarget,
-      event
+      event,
     );
   }
 
@@ -779,7 +792,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     gZenEmojiPicker.open(event.currentTarget, {
       closeOnSelect: false,
       allowNone: gZenWorkspaces.workspaceHasIcon(workspace),
-      onSelect: async icon => {
+      onSelect: async (icon) => {
         workspace.icon = icon;
         await gZenWorkspaces.saveWorkspace(workspace);
       },
@@ -821,7 +834,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     this.#dragCenterX = cardRect.left + cardRect.width / 2;
     this.#slotCenters = cards
       .filter((other, i) => i !== this.#dragIndex)
-      .map(other => {
+      .map((other) => {
         const rect = window.windowUtils.getBoundsWithoutFlushing(other);
         return rect.left + rect.width / 2;
       });
@@ -849,7 +862,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
     const travel = this.#lastPointerX - this.#dragStartX + scrolled;
     cards[this.#dragIndex].style.translate = `${travel}px 0`;
     const centerX = this.#dragCenterX + travel;
-    const index = this.#slotCenters.filter(center => centerX > center).length;
+    const index = this.#slotCenters.filter((center) => centerX > center).length;
     if (index !== this.#dropIndex) {
       this.#dropIndex = index;
       this.#shiftCards(cards);
@@ -918,7 +931,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
       card.removeAttribute("shift");
       card.style.translate = "";
     }
-    await new Promise(resolve => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     list.removeAttribute("no-transition");
   }
 
@@ -936,7 +949,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
         class="zen-library-space-icon"
         ?no-icon=${!hasIcon}
         data-l10n-id="library-spaces-icon-button"
-        @click=${event => this.#changeIcon(workspace, event)}
+        @click=${(event) => this.#changeIcon(workspace, event)}
       >
         ${content}
       </button>
@@ -949,8 +962,8 @@ export class ZenLibrarySpacesSection extends MozLitElement {
         <input
           class="zen-library-space-name-input"
           .value=${workspace.name}
-          @keydown=${event => this.#onRenameKeyDown(workspace, event)}
-          @blur=${event => this.#commitRename(workspace, event)}
+          @keydown=${(event) => this.#onRenameKeyDown(workspace, event)}
+          @blur=${(event) => this.#commitRename(workspace, event)}
         />
       `;
     }
@@ -980,7 +993,7 @@ export class ZenLibrarySpacesSection extends MozLitElement {
           <toolbarbutton
             class="toolbarbutton-1"
             data-l10n-id="library-spaces-theme-button"
-            @click=${event => this.#openThemePicker(workspace, event)}
+            @click=${(event) => this.#openThemePicker(workspace, event)}
           >
             <img
               class="toolbarbutton-icon"
@@ -997,8 +1010,8 @@ export class ZenLibrarySpacesSection extends MozLitElement {
             data-l10n-id="library-spaces-move-button"
             @pointerdown=${this.#onPointerDown}
             @pointermove=${this.#onPointerMove}
-            @pointerup=${event => this.#onPointerUp(event, workspace)}
-            @pointercancel=${event => this.#onPointerUp(event, workspace)}
+            @pointerup=${(event) => this.#onPointerUp(event, workspace)}
+            @pointercancel=${(event) => this.#onPointerUp(event, workspace)}
           >
             <img
               class="toolbarbutton-icon"
@@ -1043,12 +1056,12 @@ export class ZenLibrarySpacesSection extends MozLitElement {
   }
 
   #plusButtonHover = {
-    handleEvent: event => {
+    handleEvent: (event) => {
       const badge = event.target.closest(".zen-swipe-add-space-container");
       const isOver = event.type === "mouseover";
 
       badge.querySelector(
-        ".zen-swipe-add-space-progress-arc"
+        ".zen-swipe-add-space-progress-arc",
       ).style.strokeDasharray = isOver ? "100 100" : "0 100";
 
       if (isOver) {
@@ -1092,8 +1105,8 @@ export class ZenLibrarySpacesSection extends MozLitElement {
       <div class="zen-library-spaces">
         ${repeat(
           gZenWorkspaces.getWorkspaces(),
-          workspace => workspace.uuid,
-          workspace => this.#renderSpace(workspace)
+          (workspace) => workspace.uuid,
+          (workspace) => this.#renderSpace(workspace),
         )}
         ${this.#renderPlusButton()}
       </div>

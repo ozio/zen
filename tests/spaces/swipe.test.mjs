@@ -318,6 +318,24 @@ test("library thresholds take effect immediately while its rendering is coalesce
   s.event("MozSwipeGestureEnd");
 });
 
+test("Library drag resets the stationary workspace strips only once per gesture", () => {
+  const s = setup();
+  s.library.readySwipeOpenLibrary = () => true;
+  s.event("MozSwipeGestureStart");
+  for (const delta of [-0.1, -0.2, -0.3]) {
+    s.event("MozSwipeGestureUpdate", delta);
+    s.paint();
+  }
+  assert.equal(s.calls.filter((c) => c[0] === "library").length, 3);
+  assert.equal(s.calls.filter((c) => c[0] !== "library").length, 1);
+  s.event("MozSwipeGestureEnd");
+  s.event("MozSwipeGestureStart");
+  s.event("MozSwipeGestureUpdate", -0.1);
+  s.paint();
+  assert.equal(s.calls.filter((c) => c[0] !== "library").length, 2);
+  s.event("MozSwipeGestureEnd");
+});
+
 test("add-space uses the last raw progress and keeps its native success threshold", () => {
   const s = setup();
   s.add.ready = true;
@@ -388,6 +406,10 @@ test("the background is prepared once per neighbour and refreshed when reversing
   assert.ok(s.nav.attributes.has("animating-background"));
   manager._resetWorkspaceSwipe();
   assert.ok(!s.nav.attributes.has("animating-background"));
-  assert.equal(noise.at(-1), 0, "Cancelling restores the current space's grain");
+  assert.equal(
+    noise.at(-1),
+    0,
+    "Cancelling restores the current space's grain",
+  );
   assert.equal(s.spaces.get(current.uuid).style.transform, "translateX(0%)");
 });

@@ -17,7 +17,7 @@ ChromeUtils.defineLazyGetter(lazy, "toolbarBackgroundElement", () => {
 ChromeUtils.defineESModuleGetters(
   lazy,
   { ZenLibrary: "moz-src:///zen/library/ZenLibrary.mjs" },
-  { global: "current" }
+  { global: "current" },
 );
 
 export class ZenSpacesSwipe {
@@ -75,7 +75,7 @@ export class ZenSpacesSwipe {
 
   get #stripWidth() {
     return window.windowUtils.getBoundsWithoutFlushing(
-      document.getElementById("navigator-toolbox")
+      document.getElementById("navigator-toolbox"),
     ).width;
   }
 
@@ -122,7 +122,7 @@ export class ZenSpacesSwipe {
 
     if (
       event.target.closest(
-        '#urlbar[zen-floating-urlbar="true"], #zen-workspaces-button, #zen-library-download-list'
+        '#urlbar[zen-floating-urlbar="true"], #zen-workspaces-button, #zen-library-download-list',
       )
     ) {
       return;
@@ -149,10 +149,10 @@ export class ZenSpacesSwipe {
       "#tabbrowser-arrowscrollbox",
       ".zen-browser-grain",
     ];
-    elements.forEach(el =>
+    elements.forEach((el) =>
       document
         .querySelectorAll(el)
-        .forEach(node => node?.toggleAttribute("swipe-gesture", enable))
+        .forEach((node) => node?.toggleAttribute("swipe-gesture", enable)),
     );
   }
 
@@ -179,7 +179,7 @@ export class ZenSpacesSwipe {
         const distance = Math.abs(index - currentIndex);
         return distance <= 1 || distance === workspaces.length - 1;
       })
-      .map(workspace => ws.workspaceElement(workspace.uuid));
+      .map((workspace) => ws.workspaceElement(workspace.uuid));
     for (const element of this.#visibleWorkspaces) {
       element?.setAttribute("swipe-visible", "true");
     }
@@ -198,7 +198,7 @@ export class ZenSpacesSwipe {
       direction: null,
       stripWidth: this.#stripWidth,
       deltaMultiplier: Services.prefs.getIntPref(
-        "zen.workspaces.swipe-actions.delta-multiplier"
+        "zen.workspaces.swipe-actions.delta-multiplier",
       ),
       action: libraryOpen ? ZenSpacesSwipe.ACTIONS.LIBRARY : null,
       allowed: {
@@ -229,7 +229,7 @@ export class ZenSpacesSwipe {
     // Add a force multiplier as we are translating the strip depending on how close to the edge we are
     let forceMultiplier = Math.min(
       1,
-      1 - Math.abs(translateX) / (stripWidth * 4.5)
+      1 - Math.abs(translateX) / (stripWidth * 4.5),
     ); // 4.5 instead of 4 to add a bit of a buffer
     if (forceMultiplier > 0.5) {
       translateX *= forceMultiplier;
@@ -273,10 +273,13 @@ export class ZenSpacesSwipe {
 
     switch (this.#swipeState.action) {
       case ZenSpacesSwipe.ACTIONS.LIBRARY:
+        if (!this.#swipeState.libraryStripReset) {
+          ws._organizeWorkspaceStripLocations(currentWorkspace, true, 0);
+          this.#swipeState.libraryStripReset = true;
+        }
         lazy.ZenLibrary.swipeProgress(
-          update.translateX / this.#swipeState.stripWidth
+          update.translateX / this.#swipeState.stripWidth,
         );
-        ws._organizeWorkspaceStripLocations(currentWorkspace, true, 0);
         return;
       case ZenSpacesSwipe.ACTIONS.ADD_SPACE:
         this.#addSwipe.swipeProgress(update.delta);
@@ -287,7 +290,7 @@ export class ZenSpacesSwipe {
     ws._organizeWorkspaceStripLocations(
       currentWorkspace,
       true,
-      update.translateX
+      update.translateX,
     );
   }
 
@@ -392,9 +395,9 @@ export class ZenSpacesSwipe {
     this.#visibleWorkspaces = [];
     gZenUIManager.tabsWrapper.style.removeProperty("scrollbar-width");
     [lazy.browserBackgroundElement, lazy.toolbarBackgroundElement].forEach(
-      element => {
+      (element) => {
         element.style.setProperty("--zen-background-opacity", "1");
-      }
+      },
     );
     delete ws._hasAnimatedBackgrounds;
     ws.updateTabsContainers();
