@@ -74,14 +74,8 @@ Close the identified Playground normally before starting another instance. Use t
 
 Check the loopback fixture's `/health` response before repeating a website probe after a long pause. Its server process can stop while browser tabs retain the original HTTP URL. Firefox may then report a misleading host-permission error when FoxPilot tries to inject into the error document. Restart the owned fixture and verify the actual page; changing extension permissions is not a remedy for a refused HTTP connection.
 
-The default rollback now points to the most recent working fork, source `4a2e584bfb591f134f81d183adcc3bf483476ef8`, and its immediately pre-update personal profile/registries. Backup `2026-10-08T08-36-14.517769_00-00-f7eca68c` passed full integrity/signature verification and a guarded rollback preview before the updated main app started. The original official-release backup `2026-10-08T05-58-32.696876_00-00-287e3d1f` is also retained and verified.
+At this installation, the default rollback pointed to source `4a2e584bfb591f134f81d183adcc3bf483476ef8` and its immediately pre-update personal profile/registries. Backup `2026-10-08T08-36-14.517769_00-00-f7eca68c` passed full integrity/signature verification and a guarded rollback preview before the updated main app started. A rollback was previewed and verified, not performed against the newly installed daily app.
 
-After closing daily Zen normally, inspect the rollback scope:
-
-```sh
-python3 tools/local/dev.py rollback --backup 2026-10-08T08-36-14.517769_00-00-f7eca68c
-```
-
-Follow [the guarded rollback procedure](../DEVELOPMENT.md#rollback) before adding `--apply`. If the personal profile has evolved, the command requires `--restore-profile-snapshot` after reviewing the receipt; it preserves the current app/profile in another backup first. A rollback was previewed and verified, not performed against the newly installed daily app.
+This backup and the original official-release backup `2026-10-08T05-58-32.696876_00-00-287e3d1f` were deleted on 11 October 2026 at the user's explicit request. Recovery from those snapshots is unavailable; see [the current backup status](mcp-validation.md#retained-backups).
 
 Machine-local receipts remain ignored under `.zen-local/`: `builds/47e576d02d5542475eb4c3b092abd7e99dccf5f2/build.json`, both artifact manifests, `compatibility/47e576d02d5542475eb4c3b092abd7e99dccf5f2.json`, `page-translation-live.json`, `icon-identity-after.json`, `separated-routing-live.json`, `identity-runtime-probe.json`, `identity-playground-restart.json`, `identity-native-live.txt`, `enpass-variant-native-status.json`, `ordinary-mcp-main-stopped.json`, `identity-main-post-install.json` and `identity-rollback-preview.json`.

@@ -51,14 +51,8 @@ The `zen-playground` stdio MCP is registered in the local Codex configuration. I
 
 ## Rollback and local evidence
 
-The verified original official application and its pre-fork personal profile/registries are retained in backup `2026-10-08T05-58-32.696876_00-00-287e3d1f`. Its original source stamp is `f6a167d80b62a50c0ef5b9eedfb3bb777e0372f4`, and the copied official application's signature verifies. During initial setup, `main-install.json` deliberately selected this original release as the default rollback. The later installation has its own immediate-previous-version default in the candidate root, recorded in [the current validation](mcp-validation.md); the official backup remains available explicitly. An additional initial snapshot of the intermediate fork and later profile is retained; that intermediate build contained the development cache sentinel corrected by the final package.
+On 11 October 2026, all retained backups were deleted at the user's explicit request, including the original official-release backup `2026-10-08T05-58-32.696876_00-00-287e3d1f` and the intermediate fork snapshots. Recovery from those app/profile/registry snapshots is unavailable. The current daily app, personal profile, clean Playground profile and candidate packages were preserved; see [the current backup status](mcp-validation.md#retained-backups).
 
-Preview the return to the official release with:
-
-```sh
-python3 tools/local/dev.py rollback --backup 2026-10-08T05-58-32.696876_00-00-287e3d1f
-```
-
-Follow [DEVELOPMENT.md's rollback procedure](../DEVELOPMENT.md#rollback) before applying. Restoring the old profile snapshot requires explicit acknowledgement when the current profile has evolved; the command preserves the current app/profile in another private backup first.
+During initial setup, the original-release copy had source stamp `f6a167d80b62a50c0ef5b9eedfb3bb777e0372f4`, a verified signature and was selected as the default rollback. Those historical checks do not establish present availability.
 
 Machine-local evidence is ignored by Git. Primary receipts are `.zen-local/main-post-install.json`, `main-install.json`, `final-runtime-probe.json`, `final-fox-observation.json`, `final-mcp-live.txt`, and `compatibility/4a2e584bfb591f134f81d183adcc3bf483476ef8.json`. Original plugin/session observations are referenced by that compatibility receipt, with the human acceptance and cancelled Keepa check stated explicitly. Profiles, private browsing data, local logs and signing credentials are not committed.

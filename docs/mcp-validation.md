@@ -13,7 +13,7 @@ Installed source: `45b730cc0d8ea47284bd691c905a57cfd3ec5efd`, retained in `/User
 | Playground tree SHA-256 | `7947b90f0390feadf6ba17ea13d4baba26e71a71bc2f42cf915c66dc5fa74aaf` |
 | Build / host | Matching successful full build; macOS 26.6.2 ARM64, Clang 22.1.8, SDK 26.5 |
 | Signing | Same Developer ID identity; complete deep/strict verification after launch; no notarization |
-| Immediate backup | `2026-10-11T03-10-45.188593_00-00-5780f5e3`, containing the standalone `db72a474` app, personal profile and registries |
+| Backup status | All retained backups deleted at the user's request on 11 October 2026; previous default was `2026-10-11T03-10-45.188593_00-00-5780f5e3` |
 
 The independent compatibility receipt binds both immutable signed packages. The original clean Playground profile was retained separately from the personal-derived diagnostic copy and restored before qualification. With source/engine/object paths unavailable, it retained 20 synthetic tabs with their order and active Space, a persistent cookie and five signed active extensions. Real Enpass native greeting/status, dedicated FoxPilot action and native UI MCP passed after restart. Enpass unlock/autofill, the other extensions' full service workflows and the unchanged MCP stress matrix were not repeated.
 
@@ -33,13 +33,13 @@ Retained Playground launch:
 python3.11 tools/local/dev.py run playground --sha 45b730cc0d8ea47284bd691c905a57cfd3ec5efd
 ```
 
-Rollback preview, after normally stopping main:
+## Retained backups
 
-```sh
-python3.11 tools/local/dev.py rollback --backup 2026-10-11T03-10-45.188593_00-00-5780f5e3
-```
+On 11 October 2026, the user explicitly requested deletion of all retained backups. Eight daily app/profile/registry snapshots, two archived Playground apps and temporary source/configuration/diagnostic-session snapshots were removed. The cleanup removed 36 backup targets and increased free disk space by about 10 GiB. `.zen-local/backups/` is empty; `.zen-local/backup-cleanup.json` records the scope and filesystem checks. Current installation receipts mark their historical backup references unavailable.
 
-This backup returns to the preceding standalone `db72a474` app. Inspect the preview before adding `--apply`. For an evolved profile, follow [the rollback procedure](../DEVELOPMENT.md#rollback) and review `--restore-profile-snapshot`, preserving newer user data. The earlier `f58d2508` and original official-release backups remain separate.
+The main process and executable were unchanged during cleanup. The current personal profile, clean Playground profile, diagnostic test profile and candidate packages remain. Rollback from any removed snapshot, including the preceding `db72a474`, earlier `f58d2508` and original official release, is unavailable. Future guarded installations still create a new backup under [MAIN_UPDATE.md](../MAIN_UPDATE.md).
+
+Backup IDs and integrity results in the installation history below describe checks performed before deletion.
 
 ## Previous Space-swipe candidate, earlier 11 October 2026
 
@@ -70,13 +70,7 @@ Retained Playground launch, after gracefully stopping only Playground:
 python3.11 tools/local/dev.py run playground --sha db72a474adec9f55b64600bd00144f8fd69160e1
 ```
 
-Rollback preview, after normally stopping main:
-
-```sh
-python3.11 tools/local/dev.py rollback --backup 2026-10-10T23-41-58.496574_00-00-248ff263
-```
-
-Inspect that preview before adding `--apply`. After normal use, the profile can differ from its snapshot; follow [the rollback procedure](../DEVELOPMENT.md#rollback) if the guard requires `--restore-profile-snapshot`, preserving newer user data. This backup returns to the preceding standalone `f58d2508` app.
+Backup `2026-10-10T23-41-58.496574_00-00-248ff263` previously held the standalone `f58d2508` app and matching profile. It was removed with [all retained backups](#retained-backups).
 
 ## Previous standalone candidate, 10 October 2026
 
@@ -98,7 +92,7 @@ The same originally empty Playground profile retained 20 semantic test tabs, the
 
 Guarded preview/apply and rollback preview passed. The measured interval from the successful stopped-state check to normal-launch request was 37.831 seconds; the earlier stopped-state refusal while a child process drained and window rendering are excluded. Main opened the original registered profile without privileged debug flags while the engine was still unavailable. All 1475 tabs and 11 extension versions/active states survived. One three-tab folder shifted on restoration; its position was compared with the sealed pre-install SessionStore and returned to that saved position through the native browser move operation. Final hashes match the complete original tab order and pinning/Space/group/container relations. HTTP/HTTPS still target `/Applications/Zen.app`; installed inventory and deep/strict signature match the immutable package.
 
-Current evidence is under `.zen-local/packaging-repair/`, `.zen-local/compatibility/f58d2508b35519c37bbd2a2283a53bdba5c32777.json`, `.zen-local/main-install.json` and `.zen-local/main-post-install.json` in the primary checkout. The previous Playground app is preserved there separately; the test profile was not reset.
+Evidence is under `.zen-local/packaging-repair/`, `.zen-local/compatibility/f58d2508b35519c37bbd2a2283a53bdba5c32777.json`, `.zen-local/main-install.json` and `.zen-local/main-post-install.json` in the primary checkout. The archived previous Playground app was deleted on 11 October; the current test profile was preserved.
 
 Run the retained Playground from this repository after closing only the current Playground:
 
@@ -106,13 +100,7 @@ Run the retained Playground from this repository after closing only the current 
 python3.11 tools/local/dev.py run playground --sha f58d2508b35519c37bbd2a2283a53bdba5c32777
 ```
 
-Rollback preview, with main normally stopped:
-
-```sh
-python3.11 tools/local/dev.py rollback --backup 2026-10-10T07-21-00.342879_00-00-33417ff6
-```
-
-The backup restores the preceding `a9a0da17` developer app. That app requires its old developer directories; inspect the recovery record before using it. Preview may require explicit profile-snapshot restoration once newer profile data exists. Follow DEVELOPMENT.md and preserve current data.
+Backup `2026-10-10T07-21-00.342879_00-00-33417ff6` previously held the `a9a0da17` developer app and matching profile. It was removed with [all retained backups](#retained-backups).
 
 ## Previous candidate, 9 October 2026
 
@@ -215,7 +203,7 @@ The final delivery check later found the main process stopped; its cause was not
 
 ## Historical candidate paths and evidence
 
-The former `zen-mcp` worktree was removed. Its package, rollback and evidence paths below are historical records, not current recovery commands. Use the primary-checkout candidate and backup documented above. The previously recorded launch was:
+The former `zen-mcp` worktree was removed. Its package, rollback and evidence paths below are historical records, not current recovery commands. Use the primary-checkout candidate documented above; all retained backups have since been deleted. The previously recorded launch was:
 
 ```sh
 python3.11 tools/local/dev.py \
@@ -224,23 +212,14 @@ python3.11 tools/local/dev.py \
   run playground --sha a9a0da176b9ad3377cb281ce138d7cc5e0efe297
 ```
 
-Historically recorded previous-version backup: **`2026-10-09T08-43-03.909823_00-00-44c991e3`**, restoring `6b750d91`, under the candidate root's `.zen-local/backups/`. Inspect rollback with main gracefully stopped:
-
-```sh
-python3.11 tools/local/dev.py \
-  --root /Users/oz/.codex/worktrees/zen-mcp/Zen \
-  --toolchains /Users/oz/Projects/Zen/.zen-local/toolchains \
-  rollback --backup 2026-10-09T08-43-03.909823_00-00-44c991e3
-```
-
-Apply only the reviewed preview with `--apply`. Since the live profile has evolved, the guard may require `--restore-profile-snapshot`; follow [the rollback procedure](../DEVELOPMENT.md#rollback) and review the effect on newly created profile data before restoring that snapshot. The wrapper preserves current app/profile/registries in another backup. The old worktree backups are no longer available at these paths. The primary-checkout original-release backup is separate.
+Historically recorded previous-version backup: **`2026-10-09T08-43-03.909823_00-00-44c991e3`**, restoring `6b750d91`, under the former candidate root's `.zen-local/backups/`. That worktree and its backups are unavailable. The primary-checkout original-release backup was also deleted on 11 October at the user's request.
 
 Historical machine-local evidence was recorded under the now removed `/Users/oz/.codex/worktrees/zen-mcp/Zen/.zen-local/`:
 
 - `builds/a9a0da176b9ad3377cb281ce138d7cc5e0efe297/build.json`, matching `artifacts/` and `playground-artifacts/` manifests and fresh import/build/package logs;
 - `compatibility/a9a0da176b9ad3377cb281ce138d7cc5e0efe297.json`, binding current phase-file hashes to both sealed packages and naming the carried-forward original scope;
 - `mcp-onboarding/`: native setup, both clients, deep-link dispatch, disabled restart persistence, package/profile, and `validation/` protocol/FoxPilot/Enpass receipts;
-- `mcp-onboarding-main/`: guarded installation, rollback preview, timings, application/signature, redacted session comparison, `mcp-runtime.json` and `settings.json`; connection files and profile backups remain private;
+- `mcp-onboarding-main/`: guarded installation, rollback preview, timings, application/signature, redacted session comparison, `mcp-runtime.json` and `settings.json`; connection files and profile backups were kept out of Git;
 - original `6b750d91` build/manifests/compatibility and `mcp-validation/` settings, Inspector, full API/concurrency/stress/persistence/integration receipts; original `mcp-main/` installation/runtime receipts;
 - primary checkout: `.zen-local/mcp-onboarding-regression-final.tap`, `.zen-local/mcp-onboarding-eslint-final.txt` and preparation logs; original regression/ESLint evidence remains retained separately.
 

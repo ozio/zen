@@ -58,15 +58,9 @@ The installer left the existing registered personal profile and both registries 
 
 These are focused main-installation checks. The feature scenarios and fresh native Enpass exchange were validated separately in Playground; a daily vault unlock/autofill flow was not repeated. No personal profile was copied into Playground, and no personal URLs, Space names or vault data were recorded in the diagnostic receipts.
 
-The previous working main source `47e576d02d5542475eb4c3b092abd7e99dccf5f2`, its matching pre-update personal profile and both registries are sealed in backup `2026-10-08T22-47-31.315519_00-00-e774cdf1`. Integrity and signatures passed; an actual temporary recovery copy of the application, profile and registries matched the backup and was removed afterward. The guarded rollback preview also passed before main reopened. Rollback was not applied to the daily application. The original official-release backup is retained separately.
+The previous working main source `47e576d02d5542475eb4c3b092abd7e99dccf5f2`, its matching pre-update personal profile and both registries were sealed in backup `2026-10-08T22-47-31.315519_00-00-e774cdf1`. Integrity and signatures passed; an actual temporary recovery copy of the application, profile and registries matched the backup and was removed afterward. The guarded rollback preview also passed before main reopened. Rollback was not applied to the daily application. The original official-release backup was retained separately until the requested cleanup on 11 October.
 
-To return to the version before the automatic PiP and site-search installation, close main Zen normally and inspect the scope first:
-
-```sh
-python3.11 tools/local/dev.py rollback --backup 2026-10-08T22-47-31.315519_00-00-e774cdf1
-```
-
-Follow [the guarded rollback procedure](../DEVELOPMENT.md#rollback) before adding `--apply`. Once the profile has evolved, restoration requires reviewing the snapshot and using `--restore-profile-snapshot`; the command preserves current data in another backup first.
+Backup `2026-10-08T22-47-31.315519_00-00-e774cdf1` and the original official-release backup were deleted on 11 October 2026 at the user's request. Recovery from those snapshots is unavailable; see [the current backup status](mcp-validation.md#retained-backups).
 
 These earlier installation, recovery and normal-launch receipts are under `.zen-local/auto-pip-site-search/main-promotion/`. The current pointers are `.zen-local/main-install.json` and `.zen-local/main-post-install.json`; the latter distinguishes the complete saved session from FoxPilot's live tab subset.
 
@@ -78,15 +72,9 @@ The package passed 59 focused tests, ESLint, a clean full macOS ARM64 build and 
 
 After daily startup, the installed application's complete inventory and deep/strict signature matched the standalone package. The executable SHA256 is `3f6d10b0b948bf8bba894b0c3aee6942769f06d63cde94c5653b597646c53472`; the package tree SHA256 is `146caf96ee61ab881c9bfab2a2265676377d2baf082725c95821b48b92eb46fb`. The normal bundle identity and HTTP/HTTPS handlers remained intact. The live main process opened the same registered personal profile with ordinary launch flags. Full SessionStore comparison preserved all 1,507 saved tabs, their relative order, URL/Space/group/pinned relations, Spaces, folders and groups. All 11 extensions kept their versions and enabled state. Ordinary FoxPilot reconnected on 8089, and Playground stayed separately connected on 8091. Vault unlock/autofill and the feature-menu scenarios were not repeated in the personal profile.
 
-The first apply attempt stopped on the running-process guard. That process exited before the successful retry. The installer verified that the personal profile and registries were unchanged during replacement. The previous source `18d75652b931bc5e0d7cc850638fe8b15ed85307`, application, profile and registries are sealed in backup `2026-10-09T00-52-22.316397_00-00-6785106c`. Backup integrity and the guarded rollback preview passed before normal startup. The unchanged restore procedure retains its earlier actual recovery-copy validation; no new recovery copy or daily rollback was applied in this update.
+The first apply attempt stopped on the running-process guard. That process exited before the successful retry. The installer verified that the personal profile and registries were unchanged during replacement. The previous source `18d75652b931bc5e0d7cc850638fe8b15ed85307`, application, profile and registries were sealed in backup `2026-10-09T00-52-22.316397_00-00-6785106c`. Backup integrity and the guarded rollback preview passed before normal startup. The unchanged restore procedure retains its earlier actual recovery-copy validation; no new recovery copy or daily rollback was applied in this update.
 
-After closing main normally, preview the current rollback with:
-
-```sh
-python3.11 tools/local/dev.py rollback --backup 2026-10-09T00-52-22.316397_00-00-6785106c
-```
-
-Follow [the rollback procedure](../DEVELOPMENT.md#rollback) before applying it. If the profile has evolved, inspect the snapshot scope and the required `--restore-profile-snapshot`; newer data is preserved in another backup.
+Backup `2026-10-09T00-52-22.316397_00-00-6785106c` was deleted on 11 October 2026 with [all retained backups](mcp-validation.md#retained-backups). The earlier integrity and rollback-preview checks remain historical evidence.
 
 Current installation/read-back evidence and phase timings are under `.zen-local/move-tab/main-promotion/`. Feature and compatibility evidence is under `.zen-local/move-tab/ef5cc342a96bcbfba9d98618971039e34f283db7/` and `.zen-local/compatibility/ef5cc342a96bcbfba9d98618971039e34f283db7.json`. Personal URLs, Space names, cookies and vault data were not exported into these reports. Linux/Windows native runtime and crash recovery were not tested.
 
@@ -100,4 +88,4 @@ After closing only the existing Playground normally, launch the retained package
 python3.11 tools/local/dev.py run playground --sha 18d75652b931bc5e0d7cc850638fe8b15ed85307
 ```
 
-Promotion and rollback remain governed by [DEVELOPMENT.md](../DEVELOPMENT.md). Existing main-app rollback packages, profile backups and the previous tested Playground package were preserved.
+Promotion and rollback remain governed by [DEVELOPMENT.md](../DEVELOPMENT.md). The current candidate packages and profiles remain available. Archived Playground apps and app/profile rollback snapshots were deleted on 11 October at the user's request; future installations still follow the guarded backup procedure.
