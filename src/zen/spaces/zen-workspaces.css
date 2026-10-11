@@ -418,6 +418,13 @@ zen-workspace {
     -moz-subtree-hidden-only-visually: 1;
   }
 
+  /* Visual hiding still lays out thousands of off-screen tab rows. Retain
+     their DOM/session state, but only lay out the active/participating strips.
+     Tab dragging keeps the original strip geometry available for its targets. */
+  #navigator-toolbox:not([movingtab]) &:not([active], [swipe-visible], [workspace-transition]) {
+    display: none;
+  }
+
   /* A background crossfade must not expose every off-screen tab subtree. */
   #navigator-toolbox[swipe-gesture]:not([movingtab]) &:not([active], [swipe-visible]),
   #navigator-toolbox[animating-background]:not([movingtab], [swipe-gesture]) &:not([active], [workspace-transition]) {
