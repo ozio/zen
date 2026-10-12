@@ -957,10 +957,17 @@ class nsZenWorkspaces {
       !removedEmptyTab &&
       !this._shouldOverrideTabs
     ) {
-      const tabs = gBrowser.tabs.filter(tab => !tab.collapsed);
-      if (
-        Services.prefs.getBoolPref("zen.workspaces.continue-where-left-off")
-      ) {
+      const continueSession = Services.prefs.getBoolPref(
+        "zen.workspaces.continue-where-left-off"
+      );
+      // The saved selected index addresses the all-Spaces session rows, not
+      // just the current Space's visible tabs. Firefox View has no saved row.
+      const tabs = continueSession
+        ? this.allStoredTabs.filter(
+            tab => tab !== window.FirefoxViewHandler.tab
+          )
+        : gBrowser.tabs.filter(tab => !tab.collapsed);
+      if (continueSession) {
         this._tabToSelect = this._sessionSelected - 1;
       }
       if (
