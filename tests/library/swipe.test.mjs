@@ -113,7 +113,7 @@ function setup({ right = true, compact = false } = {}) {
     Services: {
       prefs: {
         getStringPref: () => "spaces",
-        getBoolPref: () => compact,
+        getBoolPref: (name) => name === "zen.library.enabled" || compact,
         setStringPref() {},
       },
     },
@@ -240,6 +240,64 @@ test("returning to the current endpoint cancels an older spring and rejects stal
   assert.equal(s.lib.openProgress, 0);
   assert.ok(!s.lib.hasAttribute("open"));
   assert.ok(!s.lib.hasAttribute("transitioning"));
+});
+
+test("a close at the settled endpoint invalidates an opening still waiting for layout", async () => {
+  const s = setup();
+  const opening = s.Library.animateProgress(1);
+  const closing = s.Library.animateProgress(0);
+  await s.flush();
+  await Promise.all([opening, closing]);
+  assert.equal(s.springs.length, 0);
+  assert.equal(s.lib.openProgress, 0);
+  assert.equal(s.Library.isLibraryOpen, false);
+  assert.ok(!s.lib.hasAttribute("open"));
+  assert.ok(!s.lib.hasAttribute("transitioning"));
+});
+
+test("rapid toggle follows the requested endpoint before preparation finishes", async () => {
+  const s = setup();
+  s.Library.toggle("history");
+  s.Library.toggle("history");
+  await s.flush();
+  assert.equal(s.springs.length, 0);
+  assert.equal(s.Library.isLibraryOpen, false);
+  s.Library.toggle("history");
+  await s.flush();
+  assert.equal(s.springs.at(-1).target, 1);
+  s.complete();
+  assert.equal(s.Library.isLibraryOpen, true);
+});
+
+test("gesture end during closing overshoot preserves the spring until its endpoint", async () => {
+  const s = setup();
+  const opening = s.Library.animateProgress(1);
+  await s.flush();
+  await opening;
+  s.complete();
+  await s.Library.animateProgress(0);
+  const closing = s.springs.at(-1);
+  closing.options.onUpdate(-0.02);
+  s.Library.swipeAnimationEnd();
+  assert.equal(closing.stopped, false);
+  assert.ok(s.lib.hasAttribute("transitioning"));
+  s.complete(closing);
+  assert.equal(s.lib.openProgress, 0);
+  assert.ok(!s.lib.hasAttribute("transitioning"));
+  assert.ok(!s.nodes.get("zen-appcontent-wrapper").properties.has("transform"));
+});
+
+test("window unload invalidates pending preparation and releases mounted content", async () => {
+  const s = setup();
+  let released = false;
+  s.lib._content = { children: [], replaceChildren: () => { released = true; } };
+  const opening = s.Library.animateProgress(1);
+  s.lib.handleEvent({ type: "unload" });
+  await s.flush();
+  await opening;
+  assert.equal(released, true);
+  assert.equal(s.springs.length, 0);
+  assert.ok(!s.lib.hasAttribute("open"));
 });
 
 test("interrupting a spring starts dragging from its current position", async () => {

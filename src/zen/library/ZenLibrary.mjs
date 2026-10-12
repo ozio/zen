@@ -51,10 +51,11 @@ export class ZenLibrary extends MozLitElement {
     return this.instance;
   }
 
-  #contentMounted = true;
+  #contentMounted = false;
   #mounted = new Set();
 
   #springControls = null;
+  // Every request invalidates callbacks and preparation from older motion.
   #motionGeneration = 0;
   #transitionTarget = null;
 
@@ -68,6 +69,9 @@ export class ZenLibrary extends MozLitElement {
 
   #progress = 0;
   #isOpen = false;
+  // Where the last request to open or close is heading, which #isOpen only
+  // catches up with once that request has waited for styles and a flush.
+  #target = 0;
   #initialized = false;
 
   #wrapperSwipeAttached = false;
@@ -122,6 +126,11 @@ export class ZenLibrary extends MozLitElement {
 
   static get libraryOnRight() {
     return this.getInstance()?.#libraryOnRight;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("unload", this, { once: true });
   }
 
   set isHidden(value) {
@@ -254,17 +263,17 @@ export class ZenLibrary extends MozLitElement {
       return;
     }
     event.preventDefault();
-    const items = [
-      ...offered,
-      {
+    const items = [...offered];
+    if (Section.legacyLibraryView) {
+      items.push({
         l10nId: "library-open-legacy",
         separatorBefore: true,
         command: () =>
           window.PlacesCommandHook.showPlacesOrganizer(
-            Section.legacyLibraryView ?? "AllBookmarks",
+            Section.legacyLibraryView,
           ),
-      },
-    ];
+      });
+    }
     if (!this.#tabMenu) {
       this.#tabMenu = window.MozXULElement.parseXULToFragment(
         `<menupopup class="zen-library-tab-menu"/>`,
@@ -432,10 +441,11 @@ export class ZenLibrary extends MozLitElement {
     }
 
     const lib = this.getInstance();
+    const opening = lib.#target === 1;
     if (tab && tab in lib.zenLibrarySections) {
-      if (lib.#isOpen && lib.activeTab === tab) {
+      if (opening && lib.activeTab === tab) {
         this.animateProgress(0);
-      } else if (lib.#isOpen) {
+      } else if (opening) {
         lib.activeTab = tab;
       } else {
         lib.activeTab = tab;
@@ -443,7 +453,7 @@ export class ZenLibrary extends MozLitElement {
       }
       return;
     }
-    this.animateProgress(lib.#isOpen ? 0 : 1);
+    this.animateProgress(opening ? 0 : 1);
   }
 
   /**
@@ -456,6 +466,7 @@ export class ZenLibrary extends MozLitElement {
   static async animateProgress(target) {
     const lib = this.getInstance();
     const generation = ++lib.#motionGeneration;
+    lib.#target = target;
     lib.#stopSpring();
     lib.#cancelIdleCleanup();
     lib.#transitionTarget = target;
@@ -791,12 +802,13 @@ export class ZenLibrary extends MozLitElement {
    * after the library was just closed.
    */
   #cleanup() {
+    // Even an already cleaned up library may have been restyled since, by the
+    // last frames of a spring that outlived a swipe.
+    this.#clearStyleProperties();
     if (!this.#initialized) {
       return;
     }
     this.#initialized = false;
-
-    this.#clearStyleProperties();
     this.removeAttribute("open");
     for (const tab of this.querySelectorAll(".zen-library-tab[animate]")) {
       tab.removeAttribute("animate");
@@ -830,10 +842,27 @@ export class ZenLibrary extends MozLitElement {
       case "TabOpen":
         this.onTabOpen();
         break;
+      case "unload":
+        this.#teardown();
+        break;
       case "keydown":
         this.onKeyDown(e);
         break;
     }
+  }
+
+  #teardown() {
+    ++this.#motionGeneration;
+    this.#stopSpring();
+    this.#target = 0;
+    this.#transitionTarget = null;
+    this.#canSwipe = false;
+    this.#shouldUnfreezeSwipe = false;
+    this.#cleanup();
+    this.#cancelIdleCleanup();
+    this.#contentMounted = false;
+    this.#mounted = new Set([this.activeTab]);
+    this._content?.replaceChildren();
   }
 
   onTabOpen() {
