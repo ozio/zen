@@ -10,7 +10,7 @@ import {
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
 
 const { ZenLibraryWidget } = ChromeUtils.importESModule(
-  "moz-src:///zen/library/ZenLibraryWidget.sys.mjs",
+  "moz-src:///zen/library/ZenLibraryWidget.sys.mjs"
 );
 
 let lazy = {};
@@ -29,7 +29,7 @@ ChromeUtils.defineESModuleGetters(
     ZenLibrarySpacesSection:
       "moz-src:///zen/library/sections/ZenLibrarySpacesSection.mjs",
   },
-  { global: "current" },
+  { global: "current" }
 );
 
 const LAST_TAB_PREF = "zen.library.last-tab";
@@ -183,15 +183,15 @@ export class ZenLibrary extends MozLitElement {
 
       this.style.setProperty(
         "transform",
-        `translateX(calc(${leftAligned} * -100% * (1 - ${value})))`,
+        `translateX(calc(${leftAligned} * -100% * (1 - ${value})))`
       );
       lazy.appContentWrapper.style.setProperty(
         "transform",
-        `translateX(${value * webOffset}px)`,
+        `translateX(${value * webOffset}px)`
       );
       lazy.toastContainer.style.setProperty(
         "transform",
-        `translateX(${-(value * webOffset)}px)`,
+        `translateX(${-(value * webOffset)}px)`
       );
 
       const toolboxProgress = Math.min(1, value * 3);
@@ -199,12 +199,12 @@ export class ZenLibrary extends MozLitElement {
         if (this.#libraryOnRight) {
           gNavToolbox.style.setProperty(
             "transform",
-            `translateX(calc(100% * ${toolboxProgress}))`,
+            `translateX(calc(100% * ${toolboxProgress}))`
           );
         } else {
           gNavToolbox.style.setProperty(
             "transform",
-            `translateX(calc(-100% * ${toolboxProgress}))`,
+            `translateX(calc(-100% * ${toolboxProgress}))`
           );
         }
         gNavToolbox?.style.removeProperty("opacity");
@@ -270,15 +270,15 @@ export class ZenLibrary extends MozLitElement {
         separatorBefore: true,
         command: () =>
           window.PlacesCommandHook.showPlacesOrganizer(
-            Section.legacyLibraryView,
+            Section.legacyLibraryView
           ),
       });
     }
     if (!this.#tabMenu) {
       this.#tabMenu = window.MozXULElement.parseXULToFragment(
-        `<menupopup class="zen-library-tab-menu"/>`,
+        `<menupopup class="zen-library-tab-menu"/>`
       ).firstElementChild;
-      this.#tabMenu.addEventListener("command", (menuEvent) => {
+      this.#tabMenu.addEventListener("command", menuEvent => {
         this.#tabMenuItems[menuEvent.target.dataset.index]?.command();
       });
       document.getElementById("mainPopupSet").appendChild(this.#tabMenu);
@@ -344,15 +344,15 @@ export class ZenLibrary extends MozLitElement {
       };
 
       this.#originalButtonsNextSibling.clone.classList.add(
-        "zen-library-window-buttons-clone",
+        "zen-library-window-buttons-clone"
       );
       if (this.#originalButtonsNextSibling.isNext) {
         this.#originalButtonsNextSibling.sibling.before(
-          this.#originalButtonsNextSibling.clone,
+          this.#originalButtonsNextSibling.clone
         );
       } else {
         this.#originalButtonsNextSibling.sibling.after(
-          this.#originalButtonsNextSibling.clone,
+          this.#originalButtonsNextSibling.clone
         );
       }
 
@@ -388,7 +388,7 @@ export class ZenLibrary extends MozLitElement {
       if (!link || link.sheet) {
         return undefined;
       }
-      return new Promise((resolve) => {
+      return new Promise(resolve => {
         link.addEventListener("load", resolve, { once: true });
         link.addEventListener("error", resolve, { once: true });
       });
@@ -412,7 +412,7 @@ export class ZenLibrary extends MozLitElement {
           this.#mounted = new Set([this.activeTab]);
           this.requestUpdate();
         },
-        { timeout: IDLE_CLEANUP_TIMEOUT_MS },
+        { timeout: IDLE_CLEANUP_TIMEOUT_MS }
       );
     }, CLEANUP_DELAY_MS);
   }
@@ -519,13 +519,13 @@ export class ZenLibrary extends MozLitElement {
         stiffness: 720,
         damping: 47,
         mass: 1.2,
-        onUpdate: (latest) => {
+        onUpdate: latest => {
           if (generation === lib.#motionGeneration) {
             lib.openProgress = latest;
           }
         },
         onComplete: finish,
-      },
+      }
     );
   }
 
@@ -733,7 +733,7 @@ export class ZenLibrary extends MozLitElement {
     }
     const appWrapper = document.getElementById("zen-main-app-wrapper");
     window.gZenWorkspaces._swipeManager?.attachWorkspaceSwipeGestures(
-      appWrapper,
+      appWrapper
     );
     this.#wrapperSwipeAttached = true;
   }
@@ -748,7 +748,7 @@ export class ZenLibrary extends MozLitElement {
     }
     const appWrapper = document.getElementById("zen-main-app-wrapper");
     window.gZenWorkspaces._swipeManager?.detachWorkspaceSwipeGestures(
-      appWrapper,
+      appWrapper
     );
     this.#wrapperSwipeAttached = false;
   }
@@ -989,18 +989,18 @@ export class ZenLibrary extends MozLitElement {
           <vbox id="zen-library-header"></vbox>
           <vbox id="zen-library-sidebar-tabs">
             ${Object.values(this.zenLibrarySections).map(
-              (Section) => html`
+              Section => html`
                 <vbox
                   class="zen-library-tab"
                   ?active=${this.activeTab === Section.id}
                   data-section=${Section.id}
-                  @contextmenu=${(event) => this.#openTabMenu(event, Section)}
-                  @click=${(event) => {
+                  @contextmenu=${event => this.#openTabMenu(event, Section)}
+                  @click=${event => {
                     if (this.activeTab !== Section.id) {
                       this.activeTab = Section.id;
                       const previousTab =
                         event.currentTarget.parentNode.querySelector(
-                          `.zen-library-tab[animate="true"]`,
+                          `.zen-library-tab[animate="true"]`
                         );
                       if (previousTab) {
                         previousTab.removeAttribute("animate");
@@ -1016,7 +1016,7 @@ export class ZenLibrary extends MozLitElement {
                     data-l10n-id=${Section.tabLabel ?? Section.label}
                   ></label>
                 </vbox>
-              `,
+              `
             )}
           </vbox>
           <toolbar
@@ -1027,13 +1027,15 @@ export class ZenLibrary extends MozLitElement {
           ></toolbar>
         </vbox>
         <vbox id="zen-library-content">
-          ${this.#contentMounted
-            ? repeat(
-                [...this.#mounted],
-                (id) => id,
-                (id) => this.zenLibrarySections[id].render(this),
-              )
-            : nothing}
+          ${
+            this.#contentMounted
+              ? repeat(
+                  [...this.#mounted],
+                  id => id,
+                  id => this.zenLibrarySections[id].render(this)
+                )
+              : nothing
+          }
         </vbox>
       </hbox>
     `;
