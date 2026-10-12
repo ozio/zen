@@ -1027,15 +1027,13 @@ export class ZenLibrary extends MozLitElement {
           ></toolbar>
         </vbox>
         <vbox id="zen-library-content">
-          ${
-            this.#contentMounted
-              ? repeat(
-                  [...this.#mounted],
-                  (id) => id,
-                  (id) => this.zenLibrarySections[id].render(this),
-                )
-              : nothing
-          }
+          ${this.#contentMounted
+            ? repeat(
+                [...this.#mounted],
+                (id) => id,
+                (id) => this.zenLibrarySections[id].render(this),
+              )
+            : nothing}
         </vbox>
       </hbox>
     `;
