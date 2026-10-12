@@ -224,7 +224,7 @@ python tools/local/dev.py reset-playground --apply
 
 First close the identified playground gracefully and verify its process has exited. Read the dry-run scope before applying. Reset never means deleting the main profile, changing `profiles.ini`, terminating main Zen or copying data into a replacement profile. Keep compatibility receipts before resetting; a reset invalidates persistence observations for the new profile.
 
-## Native UI MCP and FoxPilot
+## Native UI and built-in Zen MCP
 
 The [playground bridge](tools/playground/README.md) provides a stdio MCP server for browser chrome through local Marionette. Start it from the repository root:
 
@@ -256,7 +256,7 @@ The server uses JSON-lines MCP on stdin/stdout, with diagnostics on stderr. It o
 | `playground_spaces` | Select an existing `space_id` from the fresh snapshot and verify the active Space |
 | `playground_screenshot` | Capture the actual browser chrome viewport as PNG |
 
-Snapshots expire after 30 seconds and are consumed by one action. Refresh with `playground_inspect` before each action; do not reuse stale handles even if an element looks unchanged. Spaces creation/renaming and other settings use inspected real controls: `playground_spaces` selects an existing Space, it does not create one. The bridge has no arbitrary JavaScript evaluator or web-content control API; use FoxPilot for content.
+Snapshots expire after 30 seconds and are consumed by one action. Refresh with `playground_inspect` before each action; do not reuse stale handles even if an element looks unchanged. Spaces creation/renaming and other settings use inspected real controls: `playground_spaces` selects an existing Space, it does not create one. The bridge has no arbitrary JavaScript evaluator or web-content control API; use the built-in Zen MCP for content.
 
 Only one client can own a Marionette automation session at a time. Disconnect a CLI/live harness before attaching the MCP client. A one-shot `inspect` command's handles cannot be used after that process exits; interactions must use one persistent MCP session. The [bridge README](tools/playground/README.md#native-action-acceptance-recipe) provides an action/read-back sequence, and [mcp.example.json](tools/playground/mcp.example.json) is the common client configuration example.
 
@@ -280,17 +280,13 @@ Connect only to the local playground. Chrome scripting can access privileged bro
 
 For a browser chrome test, take a new snapshot, select a real sidebar/settings/Spaces control from it, perform one action, wait for its observable result, and take a second snapshot and viewport screenshot. Verify `[ZEN PLAYGROUND]` in the actual browser and native window titles; a stored title-modifier property alone is insufficient on Firefox 157. Use browser UI rather than setting the underlying database to make the screenshot look correct. Record the operation and result without private URLs.
 
-FoxPilot handles web content through its extension/MCP. Install it afresh in the playground and verify which browser it controls before testing. Open a synthetic page, read content/snapshot, click or enter a harmless test value, and verify the page result. Do not count working FoxPilot in the daily browser as the playground result. Preserve other tabs and close only the temporary verification tabs after capturing results.
+The [built-in full Zen MCP](docs/mcp.md) handles pages, native chrome, Spaces and browser data without a separate extension or Node/Python page server. For ordinary requests, use the running main instance through `zen`, as described in [AGENTS.md](AGENTS.md). FoxPilot was removed at the user's request on 2026-10-12 and is no longer a dependency or compatibility gate.
 
-For ordinary user website requests, running Zen/FoxPilot remains the default described in [AGENTS.md](AGENTS.md). Missing FoxPilot uses the internal Codex browser, then Chrome. Native desktop control is for specifically requested native UI work, not a fallback for unavailable web tools.
+### Separate main and candidate MCP
 
-### Separate ordinary and Playground page MCP
+Main defaults to `http://127.0.0.1:3923/mcp`; the independent Playground defaults to `http://127.0.0.1:3924/mcp`. Enable the candidate server through its real Settings → MCP controls and create an independent named test grant in that fresh profile. Keep the one-time test token private; never copy main credentials or use the agent setup buttons to overwrite global client configuration during a candidate check. The server stores only the grant hash and metadata in its own profile.
 
-The native `zen-playground` tools always control the isolated browser. Ordinary `foxpilot` webpage tools should connect only to main Zen. FoxPilot 1.0.22 does not select a browser according to the macOS default handler or window visibility: a sole connected extension is an implicit target, and an explicit selection is shared by clients of that broker.
-
-Keep main FoxPilot's complete WebSocket port list `[8089]` and the Playground extension's list `[8091]`. Use the supported extension options **WebSocket Ports → Save Ports** (trusted click), then verify the displayed list after the extension reloads. Do not give Playground both ports. Resolve its options URL from its own active `WebExtensionPolicy` after a reset; never borrow main's profile storage. Register `foxpilot-playground` with the same FoxPilot server entry point and `EXTENSION_PORT=8091`; keep ordinary `foxpilot` on `8089`. The [routing audit](docs/foxpilot-routing-audit.md) provides source evidence and the full configuration. [Official MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) describes stdio server and environment registration.
-
-After resetting/reinstalling the extension, configure the Playground port again before webpage automation. Saving configuration is not connection proof: check each broker roster, correlate the dedicated driver with the verified native Playground and a synthetic page, and repeat after browser/client restart. Ordinary must have no Playground driver even when main is stopped. Close only temporary verification tabs. These checks are separate from opening a system link with Playground hidden; check the actual application path chosen by Launch Services, not only the shared default handler ID.
+Initialize a local Streamable HTTP client against the candidate's actual endpoint, call `zen_browser_state`, and correlate kind `playground`, live PID, source URL, window and profile with the guarded launcher receipt. A port or a version label alone does not prove identity. Use explicit returned identifiers and fresh single-use snapshots for content read, navigation, a harmless trusted action, native chrome and Spaces operations, with actual result and viewport read-back. Close only owned test tabs. After normal shutdown, reconnect to the same profile, resolve the new instance identity and repeat the checks. Working main MCP is not candidate evidence.
 
 ## Russian page translation
 
@@ -330,7 +326,7 @@ The inventory lists extension IDs, versions, absolute package paths and SHA256 d
 | Clean profile | Prove the first profile was newly created in `.zen-local/profiles/playground`, Sync is signed out and extensions were installed separately. No personal profile was imported. |
 | Browser startup | Launch the source-built browser; inspect the real UI and expected version. Check a synthetic web page and diagnostics for startup/runtime failures. |
 | Native UI MCP | Connect to the verified instance, snapshot chrome, change an actual settings/sidebar/Spaces control, and read back the effect with a viewport screenshot. Revalidate after restart. |
-| FoxPilot | Fresh extension controls the identified playground; content read, snapshot, navigation and a harmless action succeed with a verified page state. |
+| Built-in Zen MCP | Independent test grant controls the identified candidate through its own endpoint; content read, fresh snapshot, navigation, trusted action and native UI/Spaces read-back pass, then reconnect after restart. |
 | Extensions | Every required extension is present and usable in the fresh profile. Close and reopen the same profile and verify it remains installed and functions. Include version/source metadata. |
 | Enpass native application | Fresh Enpass extension exchanges a request/valid response with the actual desktop application via its real local protocol. Record extension/desktop versions and a redacted connection/status result; a manifest, process or socket alone does not pass. |
 | Cookie persistence | A controlled HTTP page sets a non-session cookie with an explicit expiry/Max-Age. Confirm it, quit gracefully, verify process exit, relaunch the same profile and confirm the cookie in the same origin/container. Record synthetic value and expiry, not personal cookies. |
@@ -386,7 +382,7 @@ After actually performing the gates, save a JSON receipt at `.zen-local/compatib
 
 For macOS checks performed on the derived package, include `tested_playground` with its exact `artifact_manifest`, `binary_sha256`, `tree_sha256`, `base_artifact_manifest`, `base_binary_sha256` and `base_tree_sha256`. The installer verifies this binding against both sealed packages. Top-level `artifact_manifest`/`binary_sha256` still identify the main package being installed; never claim the two signed executables have the same digest. State which checks ran on the variant and which ran on the main application.
 
-Add redacted evidence references, observed results and separate native UI MCP/FoxPilot/updater check results. The installer's identity/schema checks do not independently perform the browser tests; do not manufacture passing booleans from implementation confidence. The full gate table above remains required even where the minimum machine-readable schema combines checks. A package or profile reset/change requires reviewing which receipts have become stale.
+Add redacted evidence references, observed results and separate native UI/built-in page MCP/updater check results. The installer's identity/schema checks do not independently perform the browser tests; do not manufacture passing booleans from implementation confidence. The full gate table above remains required even where the minimum machine-readable schema combines checks. A package or profile reset/change requires reviewing which receipts have become stale.
 
 Promotion requires authorization already present in the task or an explicit request to make this candidate the daily browser. Complete compatibility, standalone-package testing and a usable rollback first. Do not ask again when the transition is already authorized and all conditions are met.
 

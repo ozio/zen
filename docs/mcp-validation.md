@@ -1,5 +1,7 @@
 # Built-in MCP: macOS validation and daily installation
 
+Workflow note, 2026-10-12: FoxPilot has been removed by the user. Current validation uses the built-in full Zen MCP with independent main/Playground endpoints and grants. Earlier FoxPilot results below are historical evidence for their original artifacts, not a current prerequisite. See [DEVELOPMENT.md](../DEVELOPMENT.md#native-ui-and-built-in-zen-mcp).
+
 Validated and installed on 9 October 2026. Future Improvements **9 is complete on macOS ARM64**. The implementation and connection instructions are in [mcp.md](mcp.md). Jev remains the separate future task 11; no Jev runner or API extension was included.
 
 ## Current daily candidate, 11 October 2026
