@@ -256,7 +256,7 @@ index 52fc803050cd257d6de52b1e4a92f3211cbaba88..ecfcef5dabb7056886972651cd358355
          // window data is still in #statesToRestore
          continue;
        }
-@@ -5239,11 +5285,12 @@ class _SessionStore {
+@@ -5239,11 +5285,13 @@ class _SessionStore {
      }
  
      let tabbrowser = aWindow.gBrowser;
@@ -265,13 +265,17 @@ index 52fc803050cd257d6de52b1e4a92f3211cbaba88..ecfcef5dabb7056886972651cd358355
      /** @type {WindowStateData} */
      let winData = this.#windows[aWindow.__SSi];
      let tabsData = (winData.tabs = []);
++    let selectedIndex = 0;
  
 +    winData.splitViewData = aWindow.gZenViewSplitter?.storeDataForSessionStore();
      // update the internal state data for this window
      for (let tab of tabs) {
        if (tab == aWindow.FirefoxViewHandler.tab) {
-@@ -5254,6 +5301,9 @@ class _SessionStore {
+@@ -5254,6 +5301,12 @@ class _SessionStore {
        tabsData.push(tabData);
++      if (tab === tabbrowser.selectedTab) {
++        selectedIndex = tabsData.length;
++      }
      }
  
 +    winData.folders = aWindow.gZenFolders?.storeDataForSessionStore() || [];
@@ -280,7 +284,9 @@ index 52fc803050cd257d6de52b1e4a92f3211cbaba88..ecfcef5dabb7056886972651cd358355
      // update tab group state for this window
      winData.groups = [];
      for (let tabGroup of aWindow.gBrowser.tabGroups) {
-@@ -5270,7 +5320,7 @@ class _SessionStore {
+@@ -5268,9 +5322,8 @@ class _SessionStore {
+-    let selectedIndex = tabbrowser.tabbox.selectedIndex + 1;
+     // We don't store the Firefox View tab in Session Store, so if it was the last selected "tab" when
      // a window is closed, point to the first item in the tab strip instead (it will never be the Firefox View tab,
      // since it's only inserted into the tab strip after it's selected).
      if (aWindow.FirefoxViewHandler.tab?.selected) {
