@@ -6,11 +6,23 @@ Workflow note, 2026-10-12: FoxPilot has been removed by the user. Current valida
 
 Source `7ccddd68de07889369923fc4ee46f6445f22eb77` adds shared actionability and verified control interactions described in [mcp.md](mcp.md). All 271 Node tests and Gecko ESLint passed, followed by a full native build and standalone packaging. The packaged Gecko Playground passed all seven live interaction groups: associated labels and hidden/offscreen inputs; ARIA checkbox/switch/radio states; controlled rejection and replaced targets; editable composites and select; disabled/inert/covered/moving controls; shadow roots and explicit frames; and keyboard activation. Receipts and logs are retained under `.zen-local/mcp-interaction/`.
 
-That first immutable test artifact uses an ad hoc signature. It is feature evidence, not a daily-installation compatibility receipt or an Enpass qualification. Promotion must retain it and prepare a distinct candidate with the daily browser's existing Developer ID certificate, then verify the exact signed package, native Enpass exchange, independent MCP, extensions and same-profile persistence before installing. The previous daily installation below remains the recorded installed build until that separate promotion completes.
+That first immutable test artifact uses an ad hoc signature. It is feature evidence, not a daily-installation compatibility receipt or an Enpass qualification. It was retained unchanged; the separately signed promotion below supplies the installation evidence.
+
+## Current daily candidate, 15 October 2026
+
+Installed source: `932a47d41276685f1d573f1845ac21be3fd6156c`, Zen `1.23.2b` / Firefox `157.0.1`, macOS ARM64. This source differs from the semantic-control implementation `7ccddd68` only in this validation document. A matching full build and standalone package use the daily browser's existing Developer ID certificate. The original ad hoc artifact was not overwritten.
+
+All seven production-actor interaction groups passed again in the signed Playground. Its actual Settings checkbox and named grant, independent HTTP MCP and trusted page action, native chrome snapshot/screenshot, five signed inventory extensions, real Enpass greeting and app locked-status response passed. A graceful same-profile restart retained every original tab and its relative order, pinning/Space/group/container relations, both Spaces, extension versions/enabled states, HTTP cookie and localStorage. Source/object paths were unavailable during these checks and normal main launch. Deep/strict package signatures passed after launch. Enpass vault unlock/autofill, remote extension service workflows and the earlier 1500-tab matrix were not repeated.
+
+Guarded main preview/apply and rollback preview passed. Backup `2026-10-15T10-28-02.508016_00-00-4c062acd` contains the previous `45b730cc` app, registered personal profile and registries. The interval from verified main exit to normal launch request was **17.588 seconds**: preview 0.916 s, apply 13.838 s, rollback preview 2.768 s. Normal main PID 80058 opened the original profile without privileged debugging flags; full installed inventory and post-launch signature match the package.
+
+All **1583 original tabs**, their order/pinning/Space/group/container relations, **7 Spaces**, selected tab, window/Space metadata and **10 extension versions/enabled states** survived. HTTP/HTTPS still resolve to `/Applications/Zen.app`. The existing Codex grant survived. A separate owned loopback tab verified the installed main's hidden inputs through labels, ARIA switch, idempotence, exactly one trusted activation per widget and no nested-link activation. It was closed with all unrelated tab order preserved. The test servers stopped and the source/object paths were restored.
+
+Evidence: `.zen-local/mcp-promotion-20261015/`, `.zen-local/compatibility/932a47d41276685f1d573f1845ac21be3fd6156c.json`, `.zen-local/main-install.json` and `.zen-local/main-post-install.json`. Later documentation-only commits do not change the installed source stamp.
 
 Validated and installed on 9 October 2026. Future Improvements **9 is complete on macOS ARM64**. The implementation and connection instructions are in [mcp.md](mcp.md). Jev remains the separate future task 11; no Jev runner or API extension was included.
 
-## Current daily candidate, 11 October 2026
+## Previous daily candidate, 11 October 2026
 
 Installed source: `45b730cc0d8ea47284bd691c905a57cfd3ec5efd`, retained in `/Users/oz/Projects/Zen`. This adds the Library release/visibility and inactive-Space layout changes described in [the follow-up performance report](space-swipe-performance.md#повторная-диагностика-11-октября-2026-года). Firefox, MCP, native code, preferences and build configuration are unchanged from `db72a474`; later repository commits change documentation only.
 
@@ -43,7 +55,7 @@ python3.11 tools/local/dev.py run playground --sha 45b730cc0d8ea47284bd691c905a5
 
 ## Retained backups
 
-On 11 October 2026, the user explicitly requested deletion of all retained backups. Eight daily app/profile/registry snapshots, two archived Playground apps and temporary source/configuration/diagnostic-session snapshots were removed. The cleanup removed 36 backup targets and increased free disk space by about 10 GiB. `.zen-local/backups/` is empty; `.zen-local/backup-cleanup.json` records the scope and filesystem checks. Current installation receipts mark their historical backup references unavailable.
+On 11 October 2026, the user explicitly requested deletion of all retained backups. Eight daily app/profile/registry snapshots, two archived Playground apps and temporary source/configuration/diagnostic-session snapshots were removed. The cleanup removed 36 backup targets and increased free disk space by about 10 GiB. `.zen-local/backups/` was empty immediately afterward; `.zen-local/backup-cleanup.json` records the scope and filesystem checks. Historical installation receipts mark their removed backup references unavailable. The 15 October installation created the new retained backup listed above.
 
 The main process and executable were unchanged during cleanup. The current personal profile, clean Playground profile, diagnostic test profile and candidate packages remain. Rollback from any removed snapshot, including the preceding `db72a474`, earlier `f58d2508` and original official release, is unavailable. Future guarded installations still create a new backup under [MAIN_UPDATE.md](../MAIN_UPDATE.md).
 
