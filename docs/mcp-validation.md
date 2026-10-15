@@ -2,6 +2,12 @@
 
 Workflow note, 2026-10-12: FoxPilot has been removed by the user. Current validation uses the built-in full Zen MCP with independent main/Playground endpoints and grants. Earlier FoxPilot results below are historical evidence for their original artifacts, not a current prerequisite. See [DEVELOPMENT.md](../DEVELOPMENT.md#native-ui-and-built-in-zen-mcp).
 
+## Semantic control candidate, 15 October 2026
+
+Source `7ccddd68de07889369923fc4ee46f6445f22eb77` adds shared actionability and verified control interactions described in [mcp.md](mcp.md). All 271 Node tests and Gecko ESLint passed, followed by a full native build and standalone packaging. The packaged Gecko Playground passed all seven live interaction groups: associated labels and hidden/offscreen inputs; ARIA checkbox/switch/radio states; controlled rejection and replaced targets; editable composites and select; disabled/inert/covered/moving controls; shadow roots and explicit frames; and keyboard activation. Receipts and logs are retained under `.zen-local/mcp-interaction/`.
+
+That first immutable test artifact uses an ad hoc signature. It is feature evidence, not a daily-installation compatibility receipt or an Enpass qualification. Promotion must retain it and prepare a distinct candidate with the daily browser's existing Developer ID certificate, then verify the exact signed package, native Enpass exchange, independent MCP, extensions and same-profile persistence before installing. The previous daily installation below remains the recorded installed build until that separate promotion completes.
+
 Validated and installed on 9 October 2026. Future Improvements **9 is complete on macOS ARM64**. The implementation and connection instructions are in [mcp.md](mcp.md). Jev remains the separate future task 11; no Jev runner or API extension was included.
 
 ## Current daily candidate, 11 October 2026
