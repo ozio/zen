@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MCP interaction fixtures</title>
+<style>
+  body { font: 16px system-ui; padding: 20px; }
+  section { margin: 16px 0; }
+  label, [role=checkbox], [role=switch], [role=radio] { display: inline-block; padding: 12px; border: 1px solid #888; }
+  .offscreen { position: absolute; left: -9999px; }
+  #terms-label { position: relative; width: 420px; height: 40px; }
+  #terms-label a { position: absolute; left: 50px; right: 0; top: 0; bottom: 0; padding: 12px; }
+  .paint { display: inline-block; width: 18px; height: 18px; background: #888; }
+  #covered-box { position: relative; display: inline-block; }
+  #cover { position: absolute; inset: 0; background: #ccc; }
+  #moving { animation: move 0.22s linear infinite alternate; }
+  @keyframes move { from { transform: translateX(0); } to { transform: translateX(180px); } }
+  iframe { display: block; width: 500px; height: 180px; }
+</style>
+<h1>MCP interaction fixtures</h1>
+<section><label id="terms-label" for="offscreen"><input class="offscreen" id="offscreen" type="checkbox"><span class="paint"></span><a href="#unwanted" id="terms-link">Terms link must never activate</a></label></section>
+<section><label id="hidden-label"><input id="hidden" type="checkbox" style="display:none"><span class="paint"></span> Hidden input with a label</label></section>
+<section><input id="keyboard" class="offscreen" type="checkbox" aria-label="Keyboard-only checkbox"></section>
+<section><div id="aria-check" role="checkbox" tabindex="0" aria-checked="false">ARIA checkbox</div></section>
+<section><div id="switch" role="switch" tabindex="0" aria-checked="false">ARIA switch</div></section>
+<section><div id="radio" role="radio" tabindex="0" aria-checked="false">ARIA radio</div></section>
+<section><div id="mixed" role="checkbox" tabindex="0" aria-checked="mixed">Mixed checkbox</div></section>
+<section><div id="revert" role="switch" tabindex="0" aria-checked="false">Rejects changes</div></section>
+<section><div id="replace" role="switch" tabindex="0" aria-checked="false">Replaced after activation</div></section>
+<section><label id="text-label" for="text">Text field</label> <input id="text" value="old"></section>
+<section><div id="combo" role="combobox" aria-label="Composite editor"><input id="combo-input" value="old"></div></section>
+<section><div id="editable" contenteditable="true">old</div></section>
+<section><input id="readonly" readonly value="retained"></section>
+<section><select id="choice"><option value="one">One</option><option value="two">Two</option></select></section>
+<section><fieldset disabled><label><input id="disabled" type="checkbox">Disabled through fieldset</label></fieldset></section>
+<section aria-disabled="true"><div id="aria-disabled" role="switch" tabindex="0" aria-checked="false">Disabled through ARIA ancestor</div></section>
+<section inert><button id="inert">Inert button</button></section>
+<section><div id="covered-box"><button id="covered">Covered button</button><div id="cover"></div></div></section>
+<section><button id="release-cover">Expose covered button after a delay</button></section>
+<section><button id="moving">Continuously moving button</button></section>
+<section><div id="shadow-host"></div></section>
+<iframe src="/frame" title="Child frame"></iframe>
+<output id="observations"></output>
+<script>
+  const observations = { activations: {}, untrusted: 0, links: 0, inputs: 0 };
+  function record(id, event) {
+    observations.activations[id] = (observations.activations[id] || 0) + 1;
+    if (!event.isTrusted) observations.untrusted++;
+    report();
+  }
+  function report() { document.querySelector('#observations').textContent = JSON.stringify(observations); }
+  for (const input of document.querySelectorAll('input[type=checkbox]')) {
+    input.addEventListener('click', event => record(input.id, event));
+  }
+  for (const widget of document.querySelectorAll('[role=checkbox],[role=switch],[role=radio]')) {
+    widget.addEventListener('click', event => {
+      record(widget.id, event);
+      widget.setAttribute('aria-checked', widget.getAttribute('aria-checked') !== 'true');
+      if (widget.id === 'revert') queueMicrotask(() => widget.setAttribute('aria-checked', 'false'));
+      if (widget.id === 'replace') widget.replaceWith(widget.cloneNode(true));
+    });
+  }
+  document.querySelector('#terms-link').onclick = event => { event.preventDefault(); observations.links++; report(); };
+  document.querySelector('#covered').onclick = event => record('covered', event);
+  document.querySelector('#moving').onclick = event => record('moving', event);
+  document.querySelector('#release-cover').onclick = () => setTimeout(() => document.querySelector('#cover')?.remove(), 160);
+  document.addEventListener('input', event => { observations.inputs++; if (!event.isTrusted) observations.untrusted++; report(); });
+  const root = document.querySelector('#shadow-host').attachShadow({mode: 'open'});
+  root.innerHTML = '<label><input id="shadow-check" type="checkbox" style="position:absolute;left:-9999px"><span>Shadow checkbox</span></label>';
+  root.querySelector('input').onclick = event => record('shadow-check', event);
+  report();
+</script>

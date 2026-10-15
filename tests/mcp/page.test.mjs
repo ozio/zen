@@ -151,6 +151,10 @@ function documentFixture() {
       type: attributes.type || "",
       namespaceURI: "http://www.w3.org/1999/xhtml",
       getAttribute: (key) => (key === "id" ? id : (attributes[key] ?? null)),
+      setAttribute(key, value) {
+        attributes[key] = String(value);
+      },
+      getRootNode: () => doc,
       getBoundingClientRect: () => ({
         x: 5,
         y: 5,
@@ -161,10 +165,30 @@ function documentFixture() {
         width: 100,
         height: 20,
       }),
-      matches: (selector) =>
-        selector
-          .split(",")
-          .some((part) => part === tag || part === `#${id}` || part === "*"),
+      matches(selector) {
+        return selector.split(",").some((part) => {
+          const attr = part.match(/^\[([^=]+)='([^']+)'\]$/);
+          return (
+            part === tag ||
+            part === `#${id}` ||
+            part === "*" ||
+            (part === ":disabled" && item.disabled) ||
+            (part === "a[href]" && tag === "a" && attributes.href) ||
+            (attr && attributes[attr[1]] === attr[2])
+          );
+        });
+      },
+      querySelectorAll(selector) {
+        const found = [];
+        const visit = (node) => {
+          for (const child of node.children) {
+            if (child.matches(selector)) found.push(child);
+            visit(child);
+          }
+        };
+        visit(item);
+        return found;
+      },
       closest: () => null,
       contains: (other) => other === item || item.children.includes(other),
       focus() {
@@ -827,18 +851,25 @@ test("trusted double/context click sequences contain actual pointer actions", as
 test("native pointer checks accept the control's shadow child and reject unrelated covers", async () => {
   const { win, doc, element } = documentFixture();
   const button = element("toolbarbutton", "target");
-  button.namespaceURI = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+  button.namespaceURI =
+    "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
   const inner = element("toolbarbutton", "inner");
   inner.getRootNode = () => ({ host: button });
   doc.elementFromPoint = () => inner;
   let events = 0;
-  mocks.event = { async synthesizeMouseAtPoint() { events++; } };
+  mocks.event = {
+    async synthesizeMouseAtPoint() {
+      events++;
+    },
+  };
   await performAction(win, button, { action: "click" }, true);
   assert.equal(events, 1);
   const cover = element("div", "cover");
   cover.getRootNode = () => doc;
   doc.elementFromPoint = () => cover;
-  await assert.rejects(performAction(win, button, { action: "click" }, true), { code: "click_intercepted" });
+  await assert.rejects(performAction(win, button, { action: "click" }, true), {
+    code: "click_intercepted",
+  });
   assert.equal(events, 1);
 });
 
@@ -991,8 +1022,9 @@ test("an IndexedDB connection opening after a blocked reply is closed immediatel
 });
 
 test("form selection dispatches through privileged PresShell rather than page dispatchEvent", async () => {
-  const { win, element } = documentFixture();
+  const { win, doc, element } = documentFixture();
   const select = element("select", "choice");
+  doc.elementFromPoint = () => select;
   select.options = [
     { value: "one", selected: true },
     { value: "two", selected: false },
@@ -1010,6 +1042,279 @@ test("form selection dispatches through privileged PresShell rather than page di
   assert.ok(events.every((event) => event.target === select));
 });
 
+function positioned(item, x, y = 30, width = 100, height = 24) {
+  item.getBoundingClientRect = () => ({
+    x,
+    y,
+    left: x,
+    top: y,
+    right: x + width,
+    bottom: y + height,
+    width,
+    height,
+  });
+  return item;
+}
+
+test("offscreen native controls activate through safe label regions, never embedded links", async () => {
+  const { win, doc, element } = documentFixture();
+  const input = positioned(
+    element("input", "agree", { type: "checkbox" }),
+    -9999,
+  );
+  input.checked = false;
+  const label = positioned(element("label", "label"), 200);
+  label.control = input;
+  input.labels = [label];
+  const link = element("a", "terms", { href: "/terms" });
+  const paint = element("div", "paint");
+  paint.parentElement = label;
+  link.parentElement = label;
+  label.children.push(paint, link);
+  doc.elementFromPoint = (x) => (x < 220 ? paint : link);
+  let clicks = 0;
+  mocks.event = {
+    async synthesizeMouseAtPoint(x) {
+      assert.ok(x < 220);
+      clicks++;
+      input.checked = true;
+    },
+  };
+  const result = await performAction(win, input, {
+    action: "check",
+    checked: true,
+    timeoutMs: 256,
+  });
+  assert.equal(result.activation.via, "label");
+  assert.equal(result.verification, "verified");
+  assert.equal(clicks, 1);
+  assert.equal(
+    (await performAction(win, input, { action: "check", checked: true }))
+      .verification,
+    "already_satisfied",
+  );
+  assert.equal(clicks, 1);
+});
+
+test("default snapshots retain hidden controls with visible labels and expose actionability", () => {
+  const { win, doc, element } = documentFixture();
+  const input = positioned(
+    element("input", "hidden", { type: "checkbox" }),
+    -9999,
+  );
+  input.hidden = true;
+  input.checked = false;
+  const label = element("label", "visible-label");
+  label.control = input;
+  input.labels = [label];
+  doc.body.children.push(input, label);
+  doc.elementFromPoint = () => label;
+  const snapshot = snapshotDocument(win, new SnapshotStore(), "a", "tab");
+  const row = snapshot.elements.find((item) => item.id === "hidden");
+  assert.equal(row.visible, false);
+  assert.equal(row.checkable, "checkbox");
+  assert.equal(row.actionability.inViewport, false);
+  assert.equal(row.actionability.activation, "label");
+  assert.equal(
+    snapshot.elements.find((item) => item.tag === "label").controlId,
+    "hidden",
+  );
+});
+
+test("check supports ARIA widgets and refuses unchecking radio controls", async () => {
+  for (const role of ["checkbox", "switch", "radio"]) {
+    const { win, doc, element } = documentFixture();
+    const widget = element("div", role, { role, "aria-checked": "false" });
+    doc.elementFromPoint = () => widget;
+    let clicks = 0;
+    mocks.event = {
+      async synthesizeMouseAtPoint() {
+        clicks++;
+        widget.setAttribute("aria-checked", "true");
+      },
+    };
+    const result = await performAction(win, widget, {
+      action: "check",
+      checked: true,
+      timeoutMs: 256,
+    });
+    assert.equal(result.element.checked, true);
+    assert.equal(clicks, 1);
+    if (role === "radio") {
+      await assert.rejects(
+        performAction(win, widget, { action: "check", checked: false }),
+        { code: "wrong_control" },
+      );
+      assert.equal(clicks, 1);
+    }
+  }
+});
+
+test("a controlled widget rejecting input reports mismatch after exactly one activation", async () => {
+  const { win, doc, element } = documentFixture();
+  const widget = element("div", "controlled", {
+    role: "switch",
+    "aria-checked": "false",
+  });
+  doc.elementFromPoint = () => widget;
+  let clicks = 0;
+  mocks.event = {
+    async synthesizeMouseAtPoint() {
+      clicks++;
+      widget.setAttribute("aria-checked", "true");
+      queueMicrotask(() => widget.setAttribute("aria-checked", "false"));
+    },
+  };
+  await assert.rejects(
+    performAction(win, widget, {
+      action: "check",
+      checked: true,
+      timeoutMs: 128,
+    }),
+    { code: "state_mismatch" },
+  );
+  assert.equal(clicks, 1);
+});
+
+test("overlays, inert/ARIA-disabled ancestors and replaced targets never dispatch input", async () => {
+  const { win, doc, element } = documentFixture();
+  const widget = element("button", "target");
+  const cover = element("div", "cover");
+  doc.elementFromPoint = () => cover;
+  let clicks = 0;
+  mocks.event = {
+    async synthesizeMouseAtPoint() {
+      clicks++;
+    },
+  };
+  await assert.rejects(
+    performAction(win, widget, { action: "click", timeoutMs: 64 }),
+    { code: "click_intercepted" },
+  );
+  const parent = element("div", "disabled-parent", { "aria-disabled": "true" });
+  widget.parentElement = parent;
+  await assert.rejects(performAction(win, widget, { action: "click" }), {
+    code: "disabled_element",
+  });
+  parent.setAttribute("aria-disabled", "false");
+  parent.inert = true;
+  await assert.rejects(performAction(win, widget, { action: "click" }), {
+    code: "disabled_element",
+  });
+  parent.inert = false;
+  doc.elementFromPoint = () => widget;
+  setTimeout(() => {
+    widget.isConnected = false;
+  }, 5);
+  await assert.rejects(performAction(win, widget, { action: "click" }), {
+    code: "stale_element",
+  });
+  assert.equal(clicks, 0);
+});
+
+test("cancelled preparation cannot emit a late click", async () => {
+  const { win, doc, element } = documentFixture();
+  const widget = element("button", "target");
+  doc.elementFromPoint = () => widget;
+  let clicks = 0;
+  mocks.event = {
+    async synthesizeMouseAtPoint() {
+      clicks++;
+    },
+  };
+  const abort = new AbortController();
+  setTimeout(() => abort.abort(), 5);
+  await assert.rejects(
+    performAction(win, widget, { action: "click" }, false, abort.signal),
+    { code: "cancelled" },
+  );
+  assert.equal(clicks, 0);
+});
+
+test("input resolves labels and single editable ARIA widgets, then verifies retained values", async () => {
+  const { win, doc, element } = documentFixture();
+  const input = element("input", "text", { type: "text" });
+  input.value = "old";
+  const label = element("label", "text-label");
+  label.control = input;
+  input.labels = [label];
+  doc.elementFromPoint = () => input;
+  const calls = [];
+  mocks.interaction = {
+    clearElement(target) {
+      calls.push("clear");
+      target.value = "";
+    },
+    async sendKeysToElement(target, text) {
+      calls.push("type");
+      target.value += text;
+    },
+  };
+  assert.equal(
+    (
+      await performAction(win, label, {
+        action: "input",
+        text: "new",
+        timeoutMs: 256,
+      })
+    ).verification,
+    "verified",
+  );
+  assert.equal(input.value, "new");
+  const widget = element("div", "combo", { role: "combobox" });
+  widget.children.push(input);
+  await performAction(win, widget, {
+    action: "input",
+    text: "value",
+    timeoutMs: 256,
+  });
+  assert.equal(input.value, "value");
+  widget.children.push(element("input", "second"));
+  await assert.rejects(
+    performAction(win, widget, { action: "input", text: "ambiguous" }),
+    { code: "ambiguous_control" },
+  );
+  input.readOnly = true;
+  await assert.rejects(
+    performAction(win, input, { action: "input", text: "readonly" }),
+    { code: "readonly_control" },
+  );
+  assert.deepEqual(calls, ["clear", "type", "clear", "type"]);
+});
+
+test("Gecko interaction failures retain a safe structured cause across the actor boundary", async () => {
+  const { win, doc, element } = documentFixture();
+  const target = element("button", "target");
+  doc.elementFromPoint = () => target;
+  doc.body.children.push(target);
+  mocks.event = {
+    async synthesizeMouseAtPoint() {
+      throw Object.assign(new Error("private page contents"), {
+        name: "ElementClickInterceptedError",
+      });
+    },
+  };
+  const actor = new ZenMcpChild();
+  actor.contentWindow = win;
+  actor.browsingContext = { id: 42 };
+  actor.manager = { isCurrentGlobal: true, isClosed: false };
+  const query = (command, args) =>
+    actor.receiveMessage({
+      name: "ZenMcp:Query",
+      data: { clientId: "a", requestId: randomUUID(), command, args },
+    });
+  const snap = (await query("snapshot", { selector: "button" })).value;
+  const result = await query("action", {
+    snapshotId: snap.snapshotId,
+    documentId: snap.documentId,
+    elementId: "e1",
+    action: "click",
+  });
+  assert.equal(result.error.code, "click_intercepted");
+  assert.ok(!result.error.message.includes("private"));
+  actor.didDestroy();
+});
+
 test("console document identity uses Gecko message.innerWindowID and does not guess a different frame", () => {
   const resource = {
     resourceType: "console-message",
@@ -1023,54 +1328,127 @@ test("console document identity uses Gecko message.innerWindowID and does not gu
   assert.equal(consoleRecord(resource).frameId, null);
 });
 
-
 test("browser JavaScript retains its system context across calls and releases it with the client or window", async () => {
-  const saved = Object.fromEntries(["Services", "Components", "Cu", "Cr", "Cc", "IOUtils", "PathUtils"].map(name => [name, globalThis[name]]));
+  const saved = Object.fromEntries(
+    ["Services", "Components", "Cu", "Cr", "Cc", "IOUtils", "PathUtils"].map(
+      (name) => [name, globalThis[name]],
+    ),
+  );
   const principal = { system: true };
-  const win = { document: { nodePrincipal: { isSystemPrincipal: true } }, setTimeout, clearTimeout,
-    eval() { throw new Error("call to eval() blocked by CSP"); } };
-  Object.defineProperty(win, "window", { get: () => win });
-  let released = 0, created = 0;
-  globalThis.Services = { ...Services, testValue: 42, scriptSecurityManager: { getSystemPrincipal: () => principal } };
-  globalThis.Cc = {}; globalThis.IOUtils = {}; globalThis.PathUtils = {};
-  globalThis.Components = { results: {}, utils: {
-    Sandbox(actualPrincipal, options) {
-      created++;
-      assert.equal(actualPrincipal, principal);
-      assert.equal(options.sandboxPrototype, win);
-      assert.equal(options.wantXrays, false);
-      assert.equal(options.freshCompartment, true);
-      const sandbox = Object.create(win);
-      Object.defineProperty(sandbox, "Components", { value: Components, configurable: false });
-      return sandbox;
+  const win = {
+    document: { nodePrincipal: { isSystemPrincipal: true } },
+    setTimeout,
+    clearTimeout,
+    eval() {
+      throw new Error("call to eval() blocked by CSP");
     },
-    evalInSandbox(source, sandbox) { return vm.runInNewContext(source, sandbox); },
-    nukeSandbox() { released++; },
-  } };
-  globalThis.Cu = Components.utils; globalThis.Cr = Components.results;
+  };
+  Object.defineProperty(win, "window", { get: () => win });
+  let released = 0,
+    created = 0;
+  globalThis.Services = {
+    ...Services,
+    testValue: 42,
+    scriptSecurityManager: { getSystemPrincipal: () => principal },
+  };
+  globalThis.Cc = {};
+  globalThis.IOUtils = {};
+  globalThis.PathUtils = {};
+  globalThis.Components = {
+    results: {},
+    utils: {
+      Sandbox(actualPrincipal, options) {
+        created++;
+        assert.equal(actualPrincipal, principal);
+        assert.equal(options.sandboxPrototype, win);
+        assert.equal(options.wantXrays, false);
+        assert.equal(options.freshCompartment, true);
+        const sandbox = Object.create(win);
+        Object.defineProperty(sandbox, "Components", {
+          value: Components,
+          configurable: false,
+        });
+        return sandbox;
+      },
+      evalInSandbox(source, sandbox) {
+        return vm.runInNewContext(source, sandbox);
+      },
+      nukeSandbox() {
+        released++;
+      },
+    },
+  };
+  globalThis.Cu = Components.utils;
+  globalThis.Cr = Components.results;
   try {
-    const service = serviceFixture();service.getWindow = id => { assert.equal(id, "window");return win; };
-    const provider = new ZenMcpPageTools(service, { devtools: { cleanup() {}, destroy() {} } });
-    const result = await provider.execute("zen_javascript", {
-      instanceId: "epoch-1", scope: "browser", windowId: "window",
-      source: "(async()=>{await new Promise(r=>setTimeout(r,1));window.synthetic=Services.testValue;window.syntheticCallback=()=>Services.testValue;return {system:document.nodePrincipal.isSystemPrincipal,value:window.synthetic}})()",
-    }, { id: "client" });
+    const service = serviceFixture();
+    service.getWindow = (id) => {
+      assert.equal(id, "window");
+      return win;
+    };
+    const provider = new ZenMcpPageTools(service, {
+      devtools: { cleanup() {}, destroy() {} },
+    });
+    const result = await provider.execute(
+      "zen_javascript",
+      {
+        instanceId: "epoch-1",
+        scope: "browser",
+        windowId: "window",
+        source:
+          "(async()=>{await new Promise(r=>setTimeout(r,1));window.synthetic=Services.testValue;window.syntheticCallback=()=>Services.testValue;return {system:document.nodePrincipal.isSystemPrincipal,value:window.synthetic}})()",
+      },
+      { id: "client" },
+    );
     assert.deepEqual(result.value, { system: true, value: 42 });
     assert.equal(win.synthetic, 42);
     assert.equal(released, 0);
-    const callback = await provider.execute("zen_javascript", { instanceId: "epoch-1", scope: "browser", windowId: "window", source: "window.syntheticCallback()" }, { id: "client" });
+    const callback = await provider.execute(
+      "zen_javascript",
+      {
+        instanceId: "epoch-1",
+        scope: "browser",
+        windowId: "window",
+        source: "window.syntheticCallback()",
+      },
+      { id: "client" },
+    );
     assert.equal(callback.value, 42);
     assert.equal(created, 1);
-    const failed = await provider.execute("zen_javascript", { instanceId: "epoch-1", scope: "browser", windowId: "window", source: "throw new Error('synthetic failure')" }, { id: "client" });
-    assert.equal(failed.exception, "synthetic failure");assert.equal(released, 0);
-    provider.cleanup("client");assert.equal(released, 1);
-    await provider.execute("zen_javascript", { instanceId: "epoch-1", scope: "browser", windowId: "window", source: "42" }, { id: "client" });
+    const failed = await provider.execute(
+      "zen_javascript",
+      {
+        instanceId: "epoch-1",
+        scope: "browser",
+        windowId: "window",
+        source: "throw new Error('synthetic failure')",
+      },
+      { id: "client" },
+    );
+    assert.equal(failed.exception, "synthetic failure");
+    assert.equal(released, 0);
+    provider.cleanup("client");
+    assert.equal(released, 1);
+    await provider.execute(
+      "zen_javascript",
+      {
+        instanceId: "epoch-1",
+        scope: "browser",
+        windowId: "window",
+        source: "42",
+      },
+      { id: "client" },
+    );
     assert.equal(created, 2);
-    win.closed = true;provider.pruneBrowserContexts();assert.equal(released, 2);
-    provider.destroy();assert.equal(released, 2);
+    win.closed = true;
+    provider.pruneBrowserContexts();
+    assert.equal(released, 2);
+    provider.destroy();
+    assert.equal(released, 2);
   } finally {
     for (const [name, value] of Object.entries(saved)) {
-      if (value === undefined) delete globalThis[name]; else globalThis[name] = value;
+      if (value === undefined) delete globalThis[name];
+      else globalThis[name] = value;
     }
   }
 });

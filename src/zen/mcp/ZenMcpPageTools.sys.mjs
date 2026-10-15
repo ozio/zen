@@ -56,6 +56,7 @@ const ELEMENT = {
   deltaX: schema.number,
   deltaY: schema.number,
   paths: schema.strings,
+  timeoutMs: { type: "integer", minimum: 64, maximum: 10000, default: 1500 },
 };
 const ELEMENT_REQUIRED = ["snapshotId", "elementId", "documentId", "action"];
 
@@ -364,6 +365,10 @@ export class ZenMcpPageTools {
         text: schema.string,
         visible: schema.boolean,
         disabled: schema.boolean,
+        actionability: schema.object,
+        checkable: schema.string,
+        checked: { type: ["boolean", "string", "null"] },
+        controlId: { type: ["string", "null"] },
         rect: schema.object,
       },
       required: [
@@ -396,6 +401,12 @@ export class ZenMcpPageTools {
       truncated: schema.boolean,
       scanTruncated: schema.boolean,
       action: schema.string,
+      activation: schema.object,
+      verification: schema.enum(
+        "verified",
+        "already_satisfied",
+        "not_applicable"
+      ),
       collecting: schema.boolean,
       retainedLimit: schema.integer,
       value: {},

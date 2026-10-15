@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import { interactionError } from "resource:///actors/ZenMcpActionability.sys.mjs";
 import {
   McpToolError,
   SnapshotStore,
@@ -84,12 +85,13 @@ export class ZenMcpChild extends JSWindowActorChild {
       );
       return { ok: true, value };
     } catch (error) {
+      const cause = interactionError(error);
       let code = "page_operation_failed";
       let description =
         "The page operation failed; inspect its current state before retrying";
-      if (error instanceof McpToolError) {
-        code = error.code;
-        description = error.message;
+      if (cause instanceof McpToolError) {
+        code = cause.code;
+        description = cause.message;
       } else if (controller.signal.aborted) {
         code = "cancelled";
         description = "The request was cancelled";
@@ -146,7 +148,7 @@ export class ZenMcpChild extends JSWindowActorChild {
         );
         return {
           ...this.#identity(),
-          ...(await performAction(win, element, args)),
+          ...(await performAction(win, element, args, false, signal)),
         };
       }
       case "wait":

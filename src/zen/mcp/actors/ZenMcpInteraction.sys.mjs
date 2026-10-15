@@ -7,6 +7,17 @@ import {
   paginate,
   requireValue,
 } from "resource:///modules/zen/mcp/ZenMcpUtils.sys.mjs";
+import {
+  activationTargets,
+  checkState,
+  describeActionability,
+  disabledControl,
+  interactionError,
+  preparePointer,
+  renderedElement,
+  semanticControl,
+  verifyState,
+} from "resource:///actors/ZenMcpActionability.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -15,7 +26,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const PAGE_SELECTOR =
-  "body,a[href],button,input,textarea,select,option,[role],[aria-label],[contenteditable],h1,h2,h3,h4,h5,h6,main,nav,header,footer,section,article,form,dialog,summary,details,iframe,[tabindex]";
+  "body,a[href],button,input,label,textarea,select,option,[role],[aria-label],[contenteditable],h1,h2,h3,h4,h5,h6,main,nav,header,footer,section,article,form,dialog,summary,details,iframe,[tabindex]";
 const CHROME_SELECTOR =
   "button,toolbarbutton,menu,menuitem,menulist,menupopup,input,textarea,select,checkbox,radio,tab,[role],[aria-label],[data-l10n-id],[command],a[href]";
 const MAX_SCANNED = 20000;
@@ -32,6 +43,7 @@ export function elementFingerprint(element) {
     element.id,
     element.getAttribute("role"),
     element.getAttribute("type"),
+    element.getAttribute("for"),
     element.getAttribute("href"),
     element.getAttribute("aria-label"),
     element.getAttribute("label"),
@@ -68,19 +80,7 @@ export function visibleElement(element) {
   if (nativeMenuVisible(element)) {
     return true;
   }
-  const win = element.ownerGlobal || element.documentGlobal;
-  const rect = element.getBoundingClientRect();
-  const style = win.getComputedStyle(element);
-  return (
-    !element.hidden &&
-    style.display !== "none" &&
-    style.visibility !== "hidden" &&
-    style.visibility !== "collapse" &&
-    rect.width > 0 &&
-    rect.height > 0 &&
-    (!element.checkVisibility ||
-      element.checkVisibility({ checkVisibilityCSS: true }))
-  );
+  return renderedElement(element);
 }
 
 function roleFor(element) {
@@ -167,8 +167,9 @@ export function describeElement(element, elementId) {
     name: labelFor(element),
     text: (element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 500),
     visible: visibleElement(element),
-    disabled: !!element.disabled || element.getAttribute("disabled") === "true",
+    disabled: disabledControl(element),
     rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    actionability: describeActionability(element),
   };
   for (const attribute of [
     "id",
@@ -191,8 +192,15 @@ export function describeElement(element, elementId) {
   ) {
     result.value = String(element.value).slice(0, 1000);
   }
-  if ("checked" in element) {
+  const state = checkState(element);
+  if (state) {
+    result.checkable = state.kind;
+    result.checked = state.checked;
+  } else if ("checked" in element) {
     result.checked = !!element.checked;
+  }
+  if (element.localName === "label" && element.control) {
+    result.controlId = element.control.id || null;
   }
   if (nativeMenuVisible(element)) {
     result.nativeMenu = true;
@@ -229,7 +237,14 @@ export function scanElements(doc, selector, includeHidden = false) {
         if (node.shadowRoot) {
           roots.push(node.shadowRoot);
         }
-        if (node.matches(selector) && (includeHidden || visibleElement(node))) {
+        if (
+          node.matches(selector) &&
+          (includeHidden ||
+            visibleElement(node) ||
+            activationTargets(node).some(
+              target => target !== node && visibleElement(target)
+            ))
+        ) {
           elements.push(node);
         }
       }
@@ -350,6 +365,15 @@ export function validateAction(args) {
     "invalid_action",
     "Unknown element action"
   );
+  if (args.timeoutMs !== undefined) {
+    requireValue(
+      Number.isInteger(args.timeoutMs) &&
+        args.timeoutMs >= 64 &&
+        args.timeoutMs <= 10000,
+      "invalid_timeout",
+      "timeoutMs must be an integer from 64 to 10000"
+    );
+  }
   if (args.action === "input") {
     requireValue(
       typeof args.text === "string" && args.text.length <= 1000000,
@@ -417,49 +441,6 @@ export function validateAction(args) {
   }
 }
 
-function containsComposedHit(element, hit) {
-  while (hit) {
-    if (hit === element || element.contains(hit)) {
-      return true;
-    }
-    hit = hit.getRootNode()?.host;
-  }
-  return false;
-}
-
-function clickablePoint(win, element) {
-  element.scrollIntoView({
-    block: "nearest",
-    inline: "nearest",
-    behavior: "instant",
-  });
-  const rect = element.getBoundingClientRect();
-  const left = Math.max(0, rect.left),
-    right = Math.min(win.innerWidth, rect.right);
-  const top = Math.max(0, rect.top),
-    bottom = Math.min(win.innerHeight, rect.bottom);
-  requireValue(
-    right > left && bottom > top,
-    "not_interactable",
-    "The element is outside the viewport"
-  );
-  const point = { x: (left + right) / 2, y: (top + bottom) / 2 };
-  let hit = win.document.elementFromPoint(point.x, point.y);
-  while (hit?.shadowRoot) {
-    const next = hit.shadowRoot.elementFromPoint(point.x, point.y);
-    if (!next || next === hit) {
-      break;
-    }
-    hit = next;
-  }
-  requireValue(
-    containsComposedHit(element, hit),
-    "click_intercepted",
-    "Another element covers this target; inspect it again"
-  );
-  return point;
-}
-
 function controlEvent(win, element, type) {
   // Ordinary dispatchEvent produces an untrusted event. Privileged PresShell
   // dispatch gives form/file controls the native trusted input/change signal.
@@ -469,7 +450,14 @@ function controlEvent(win, element, type) {
   );
 }
 
-async function performPointerAction(win, element, args, chrome, assertCurrent) {
+async function performPointerAction(
+  win,
+  element,
+  args,
+  chrome,
+  assertCurrent,
+  point
+) {
   switch (args.action) {
     case "click":
       if (
@@ -478,20 +466,13 @@ async function performPointerAction(win, element, args, chrome, assertCurrent) {
         typeof element.doCommand === "function"
       ) {
         element.doCommand();
-      } else if (
-        element.namespaceURI ===
-        "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-      ) {
-        const point = clickablePoint(win, element);
-        await lazy.event.synthesizeMouseAtPoint(point.x, point.y, {}, win);
       } else {
-        await lazy.interaction.clickElement(element, false, true);
+        await lazy.event.synthesizeMouseAtPoint(point.x, point.y, {}, win);
       }
       break;
     case "double_click":
     case "context_click":
     case "hover": {
-      const point = clickablePoint(win, element);
       if (args.action === "context_click") {
         for (const type of ["mousedown", "contextmenu", "mouseup"]) {
           assertCurrent();
@@ -558,6 +539,255 @@ async function uploadFiles(win, element, args, assertCurrent) {
   controlEvent(win, element, "change");
 }
 
+async function fillControl(win, control, args, options) {
+  const { assertCurrent } = options;
+  requireValue(
+    ["input", "textarea"].includes(control.localName) ||
+      control.isContentEditable,
+    "wrong_control",
+    "input needs an editable input, textarea or contenteditable control"
+  );
+  requireValue(
+    control.type !== "file",
+    "wrong_control",
+    "Use upload for file inputs"
+  );
+  requireValue(
+    !control.readOnly && control.getAttribute("aria-readonly") !== "true",
+    "readonly_control",
+    "The control is read-only"
+  );
+  const read = () =>
+    control.isContentEditable ? control.textContent : control.value;
+  const expected = args.replace !== false ? args.text : read() + args.text;
+  if (args.replace !== false) {
+    lazy.interaction.clearElement(control);
+  }
+  assertCurrent();
+  if (["date", "time"].includes(control.type)) {
+    control.value = args.text;
+    controlEvent(win, control, "input");
+    assertCurrent();
+    controlEvent(win, control, "change");
+  } else {
+    await lazy.interaction.sendKeysToElement(control, args.text, {
+      webdriverClick: true,
+    });
+  }
+  await verifyState(read, value => value === expected, options);
+}
+
+async function sendControlKey(win, control, args) {
+  control.focus();
+  requireValue(
+    (control.getRootNode?.() || win.document).activeElement === control,
+    "not_focusable",
+    "The requested control did not receive keyboard focus"
+  );
+  const modifiers = Object.fromEntries(
+    (args.modifiers || []).map(key => [`${key}Key`, true])
+  );
+  const key = args.key.replace(/^KEY_/, "");
+  lazy.event.sendSingleKey(
+    { key, printable: [...key].length === 1, ...modifiers },
+    win
+  );
+}
+
+async function selectControl(win, control, args, options) {
+  const { assertCurrent } = options;
+  requireValue(
+    control.localName === "select",
+    "wrong_control",
+    "select needs a select element"
+  );
+  requireValue(
+    control.multiple || args.values.length === 1,
+    "wrong_control",
+    "This select accepts one value"
+  );
+  const choices = [...control.options];
+  requireValue(
+    args.values.every(value =>
+      choices.some(option => option.value === value && !option.disabled)
+    ),
+    "missing_option",
+    "An option is missing or disabled"
+  );
+  control.focus();
+  for (const option of choices) {
+    option.selected = args.values.includes(option.value);
+  }
+  controlEvent(win, control, "input");
+  assertCurrent();
+  controlEvent(win, control, "change");
+  await verifyState(
+    () =>
+      [...control.options]
+        .filter(option => option.selected)
+        .map(option => option.value),
+    values =>
+      values.every(value => args.values.includes(value)) &&
+      args.values.every(value => values.includes(value)),
+    options
+  );
+}
+
+async function prepareActivation(
+  win,
+  control,
+  args,
+  chrome,
+  options,
+  noChange
+) {
+  let activation;
+  const pointerActions = [
+    "click",
+    "double_click",
+    "context_click",
+    "hover",
+    "scroll",
+  ];
+  const nativeMenu = chrome && nativeMenuVisible(control);
+  if (
+    !noChange &&
+    !nativeMenu &&
+    (pointerActions.includes(args.action) ||
+      ["check", "input", "select"].includes(args.action))
+  ) {
+    try {
+      activation = await preparePointer(win, control, options);
+    } catch (error) {
+      // Keyboard activation is useful for focusable offscreen controls, but it
+      // must not bypass a covering modal/overlay or a display:none control.
+      if (
+        args.action !== "check" ||
+        error.code !== "outside_viewport" ||
+        !renderedElement(control) ||
+        !(control.tabIndex >= 0)
+      ) {
+        throw error;
+      }
+      control.focus();
+      requireValue(
+        (control.getRootNode?.() || win.document).activeElement === control,
+        "not_focusable",
+        "The control did not receive keyboard focus"
+      );
+      activation = { via: "keyboard" };
+    }
+  }
+  if (
+    !nativeMenu &&
+    !activation &&
+    !["check", "upload", "close_menu"].includes(args.action)
+  ) {
+    requireValue(
+      visibleElement(control),
+      "hidden_element",
+      "The control is hidden"
+    );
+  }
+  return activation;
+}
+
+async function prepareAction(win, element, args, chrome, signal) {
+  validateAction(args);
+  const control = ["close_menu", "open_menu", "submit", "scroll"].includes(
+    args.action
+  )
+    ? element
+    : semanticControl(element, args.action);
+  const expectedDocumentId = documentIdentity(win);
+  const expectedDocument = element.ownerDocument;
+  const fingerprint = elementFingerprint(control);
+  let dispatched = false;
+  const assertCurrent = () => {
+    requireValue(
+      !signal?.aborted,
+      "cancelled",
+      "The action was cancelled; inspect current state before retrying"
+    );
+    requireValue(
+      win.document === expectedDocument &&
+        documentIdentity(win) === expectedDocumentId,
+      "stale_document",
+      "The document changed during the action; inspect the tab before retrying"
+    );
+    requireValue(
+      control.isConnected &&
+        control.ownerDocument === expectedDocument &&
+        element.isConnected,
+      "stale_element",
+      "The control was replaced; inspect current state before retrying"
+    );
+    requireValue(
+      dispatched ||
+        (fingerprint === elementFingerprint(control) &&
+          (element.localName !== "label" || element.control === control)),
+      "changed_element",
+      "The control changed during preparation; inspect it again"
+    );
+  };
+  assertCurrent();
+  const options = { timeoutMs: args.timeoutMs ?? 1500, assertCurrent };
+  requireValue(
+    !disabledControl(control),
+    "disabled_element",
+    "The control is disabled or inert"
+  );
+  const state = checkState(control);
+  if (args.action === "check") {
+    requireValue(
+      state && state.checked !== null,
+      "wrong_control",
+      "check needs a native checkbox/radio or an ARIA checkbox/radio/switch with aria-checked"
+    );
+    requireValue(
+      !(state.kind === "radio" && !args.checked),
+      "wrong_control",
+      "A radio control cannot be unchecked by activation"
+    );
+  }
+  let activation;
+  const noChange = args.action === "check" && state.checked === args.checked;
+  activation = await prepareActivation(
+    win,
+    control,
+    args,
+    chrome,
+    options,
+    noChange
+  );
+  assertCurrent();
+  return {
+    control,
+    options,
+    state,
+    noChange,
+    activation,
+    assertCurrent,
+    markDispatched(value) {
+      dispatched = value;
+    },
+  };
+}
+
+function actionResult(win, element, args, activation, verification) {
+  return {
+    action: args.action,
+    verification,
+    ...(activation ? { activation: { via: activation.via } } : {}),
+    documentId: documentIdentity(win),
+    url: win.document.documentURI,
+    ...(element.isConnected && element.ownerDocument === win.document
+      ? { element: describeElement(element, args.elementId) }
+      : { elementRemoved: true }),
+    scroll: { x: win.scrollX, y: win.scrollY },
+  };
+}
+
 /**
  * Uses Gecko's trusted WebDriver event helpers without starting a remote agent.
  *
@@ -565,121 +795,89 @@ async function uploadFiles(win, element, args, assertCurrent) {
  * @param {Element} element A validated, fresh element.
  * @param {object} args The validated action arguments.
  * @param {boolean} [chrome=false] Whether native chrome controls are allowed.
+ * @param {AbortSignal} [signal] Cancels waiting before any late input can fire.
  */
-export async function performAction(win, element, args, chrome = false) {
-  validateAction(args);
-  const expectedDocumentId = documentIdentity(win);
-  const expectedDocument = element.ownerDocument;
-  const assertCurrent = () =>
-    requireValue(
-      win.document === expectedDocument &&
-        documentIdentity(win) === expectedDocumentId,
-      "stale_document",
-      "The document changed during the action; inspect the tab before retrying"
-    );
-  assertCurrent();
-  requireValue(
-    !element.disabled && element.getAttribute("disabled") !== "true",
-    "disabled_element",
-    "The element is disabled"
-  );
-  if (!["upload", "close_menu"].includes(args.action)) {
-    requireValue(
-      visibleElement(element),
-      "hidden_element",
-      "The element is hidden"
-    );
-  }
+export async function performAction(
+  win,
+  element,
+  args,
+  chrome = false,
+  signal
+) {
+  const context = await prepareAction(win, element, args, chrome, signal);
+  const { control, options, state, noChange, activation, assertCurrent } =
+    context;
+  let verification = "not_applicable";
   const userInput = win.windowUtils.setHandlingUserInput(true);
   try {
+    context.markDispatched(!noChange);
     switch (args.action) {
       case "click":
       case "double_click":
       case "context_click":
       case "hover":
-        await performPointerAction(win, element, args, chrome, assertCurrent);
+        await performPointerAction(
+          win,
+          control,
+          args,
+          chrome,
+          assertCurrent,
+          activation?.point
+        );
+        if (args.action === "click" && state && state.checked !== null) {
+          const expected =
+            state.kind === "radio" ? true : state.checked !== true;
+          await verifyState(
+            () => checkState(control)?.checked,
+            value => value === expected,
+            options
+          );
+          verification = "verified";
+        }
         break;
       case "focus":
-        element.focus();
+        control.focus();
+        await verifyState(
+          () => (control.getRootNode?.() || win.document).activeElement,
+          value => value === control,
+          options
+        );
+        verification = "verified";
         break;
       case "input":
-        requireValue(
-          element.type !== "file",
-          "wrong_control",
-          "Use upload for file inputs"
-        );
-        if (args.replace !== false) {
-          lazy.interaction.clearElement(element);
-        }
-        assertCurrent();
-        if (["date", "time"].includes(element.type)) {
-          element.value = args.text;
-          controlEvent(win, element, "input");
-          assertCurrent();
-          controlEvent(win, element, "change");
-        } else {
-          await lazy.interaction.sendKeysToElement(element, args.text, {
-            webdriverClick: true,
-          });
-        }
+        await fillControl(win, control, args, options);
+        verification = "verified";
         break;
-      case "key": {
-        element.focus();
-        const modifiers = Object.fromEntries(
-          (args.modifiers || []).map(key => [`${key}Key`, true])
-        );
-        const key = args.key.replace(/^KEY_/, "");
-        lazy.event.sendSingleKey(
-          { key, printable: [...key].length === 1, ...modifiers },
-          win
-        );
+      case "key":
+        await sendControlKey(win, control, args, options);
         break;
-      }
-      case "select": {
-        requireValue(
-          element.localName === "select",
-          "wrong_control",
-          "select needs a select element"
-        );
-        requireValue(
-          element.multiple || args.values.length === 1,
-          "wrong_control",
-          "This select accepts one value"
-        );
-        const options = [...element.options];
-        requireValue(
-          args.values.every(value =>
-            options.some(option => option.value === value && !option.disabled)
-          ),
-          "missing_option",
-          "An option is missing or disabled"
-        );
-        element.focus();
-        for (const option of options) {
-          option.selected = args.values.includes(option.value);
-        }
-        controlEvent(win, element, "input");
-        assertCurrent();
-        controlEvent(win, element, "change");
+      case "select":
+        await selectControl(win, control, args, options);
+        verification = "verified";
         break;
-      }
       case "check":
-        requireValue(
-          ["checkbox", "radio"].includes(element.type),
-          "wrong_control",
-          "check needs a checkbox or radio input"
-        );
-        requireValue(
-          !(element.type === "radio" && !args.checked),
-          "wrong_control",
-          "A radio input cannot be unchecked with a click"
-        );
-        if (!!element.checked !== args.checked) {
-          await lazy.interaction.clickElement(element, false, true);
+        if (!noChange) {
+          assertCurrent();
+          if (activation.via === "keyboard") {
+            lazy.event.sendSingleKey({ key: " ", printable: true }, win);
+          } else {
+            await lazy.event.synthesizeMouseAtPoint(
+              activation.point.x,
+              activation.point.y,
+              {},
+              win
+            );
+          }
+          await verifyState(
+            () => checkState(control)?.checked,
+            value => value === args.checked,
+            options
+          );
         }
+        verification = noChange ? "already_satisfied" : "verified";
         break;
       case "scroll": {
-        const point = clickablePoint(win, element);
+        const { point } = activation;
         await lazy.event.synthesizeWheelAtPoint(
           point.x,
           point.y,
@@ -698,7 +896,7 @@ export async function performAction(win, element, args, chrome = false) {
         element.requestSubmit();
         break;
       case "upload":
-        await uploadFiles(win, element, args, assertCurrent);
+        await uploadFiles(win, control, args, assertCurrent);
         break;
       case "open_menu":
         requireValue(
@@ -722,18 +920,12 @@ export async function performAction(win, element, args, chrome = false) {
         break;
       }
     }
+  } catch (error) {
+    throw interactionError(error);
   } finally {
     userInput.destruct();
   }
-  return {
-    action: args.action,
-    documentId: documentIdentity(win),
-    url: win.document.documentURI,
-    ...(element.isConnected && element.ownerDocument === win.document
-      ? { element: describeElement(element, args.elementId) }
-      : { elementRemoved: true }),
-    scroll: { x: win.scrollX, y: win.scrollY },
-  };
+  return actionResult(win, element, args, activation, verification);
 }
 
 /**
