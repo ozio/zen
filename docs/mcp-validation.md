@@ -20,6 +20,8 @@ All **1583 original tabs**, their order/pinning/Space/group/container relations,
 
 Evidence: `.zen-local/mcp-promotion-20261015/`, `.zen-local/compatibility/932a47d41276685f1d573f1845ac21be3fd6156c.json`, `.zen-local/main-install.json` and `.zen-local/main-post-install.json`. Later documentation-only commits do not change the installed source stamp.
 
+Skill follow-up, 15 October: the canonical [zen-browser instructions](../src/zen/mcp/skills/zen-browser/SKILL.md) and the managed Codex copy now describe semantic controls, actionability and state verification. The production skill installer accepted the canonical template, retained its ownership receipt and passed read-back; both skill validators and all 11 installer tests passed. The sealed application was not modified or restarted: its **Install skill** button still serves the earlier bundled template, and the revised template will ship with the next browser package.
+
 Validated and installed on 9 October 2026. Future Improvements **9 is complete on macOS ARM64**. The implementation and connection instructions are in [mcp.md](mcp.md). Jev remains the separate future task 11; no Jev runner or API extension was included.
 
 ## Previous daily candidate, 11 October 2026

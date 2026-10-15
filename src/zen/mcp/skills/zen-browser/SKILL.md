@@ -24,6 +24,30 @@ snapshot. After an error or timeout, inspect the actual state before deciding
 what to do: the action may already have happened. Do not repeat a mutation merely
 because its response was lost.
 
+For checkboxes, switches and radios, prefer `zen_page_action` with
+`action: "check"` and the desired `checked` boolean over a toggling `click`.
+Native checkbox/radio inputs and ARIA checkbox/switch/radio roles with explicit
+`aria-checked` are supported. Checking an already satisfied state sends no
+input. A radio can be checked, but cannot be unchecked this way.
+
+Read the element's `actionability` alongside `visible`. A hidden native input
+can be activated through its associated visible HTML label, and an offscreen
+control can be scrolled into view by MCP. Target the control from the snapshot
+and let MCP choose a safe activation point; do not reject it solely because
+`visible` or `inViewport` is false. A label's `controlId` identifies its associated
+HTML control; ARIA naming alone does not delegate activation. Avoid nested links
+inside labels, and do not bypass disabled, inert or covered controls with DOM
+state assignments. `input` can also follow an HTML label or resolve an ARIA
+combobox/textbox/searchbox containing exactly one rendered editable descendant.
+
+After `check`, `input`, `select` or `focus`, inspect `verification`: `verified`
+means the requested state was observed; `already_satisfied` means no input was
+needed. `not_applicable` requires a separate outcome check. On `state_mismatch`,
+read the actual state or value: the page may reject or reformat input. Decide
+the next step from that read-back rather than automatically repeating input.
+For a replaced or repurposed element, obtain a new snapshot before another
+action; do not reuse its old handle or silently substitute a new target.
+
 Preserve unrelated windows, tabs, Spaces and profile data. Create temporary tabs
 when useful for the task and close only those temporary targets afterward.
 Prefer viewport screenshots. Use page tools for web content and chrome tools
