@@ -714,6 +714,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     const emptyTab = gBrowser.addTab("about:blank", {
       skipAnimation: true,
       pinned: true,
+      zenWorkspaceId: options.workspaceId || gZenWorkspaces.activeWorkspace,
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       _forZenEmptyTab: true,
       createLazyBrowser: true,
@@ -1389,12 +1390,38 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     // Initialize UI state for all folders.
     for (const { stateData, node } of tabFolderWorkingData.values()) {
       if (node && !stateData.splitViewGroup) {
+        this.restoreFolderPlacement(node, stateData);
         this.#groupInit(node, stateData);
       }
     }
 
     gBrowser.tabContainer._invalidateCachedTabs();
     delete this._sessionRestoring;
+  }
+
+  restoreFolderPlacement(folder, stateData) {
+    if (stateData.parentId || !stateData.workspaceId) {
+      return;
+    }
+    const workspace = gZenWorkspaces.workspaceElement(stateData.workspaceId);
+    const container = folder.pinned
+      ? workspace?.pinnedTabsContainer
+      : workspace?.tabsContainer;
+    if (!container || container.contains(folder)) {
+      return;
+    }
+    // Older empty-folder placeholders may lack a Space. Firefox then restores
+    // the whole group into the active Space; the folder's saved identity wins.
+    const previous = document.getElementById(stateData.prevSiblingInfo?.id);
+    if (previous?.parentElement === container) {
+      previous.after(folder);
+    } else {
+      const start = container.querySelector(".zen-tab-group-start");
+      container.insertBefore(
+        folder,
+        start?.nextElementSibling ?? container.firstElementChild
+      );
+    }
   }
 
   /**
