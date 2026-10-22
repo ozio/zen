@@ -126,6 +126,18 @@ class Element {
   get isConnected() {
     return !!this.parentElement;
   }
+  contains(item) {
+    for (
+      let current = item;
+      current;
+      current = current.parentElement ?? current.groupOwner
+    ) {
+      if (current === this) {
+        return true;
+      }
+    }
+    return false;
+  }
   get nextElementSibling() {
     return (
       this.parentElement?.children[
@@ -230,14 +242,14 @@ function environment(options = {}) {
       moveTabToWorkspace(tab, id) {
         const root = win.roots.get(id);
         assert.ok(root);
-        if (tab.getAttribute("zen-workspace-id") === id && tab.parentElement) {
+        const container = tab.pinned
+          ? root.pinnedTabsContainer
+          : root.tabsContainer;
+        if (container.contains(tab)) {
           return;
         }
         tab.setAttribute("zen-workspace-id", id);
-        (tab.pinned
-          ? root.pinnedTabsContainer
-          : root.tabsContainer
-        ).appendChild(tab);
+        container.appendChild(tab);
       },
     };
     win.gBrowser = {
@@ -1328,6 +1340,37 @@ test("explicit nested folders move without absorbing their enclosing folder", as
   const empty = e.createGroup(e.win, "empty-child", []);
   inner.groupContainer.appendChild(empty);
   assert.deepEqual(e.provider.units([], [inner, empty]), [inner]);
+});
+
+test("retained recovery repairs a native Space attribute whose DOM container is still wrong", async () => {
+  const e = environment();
+  e.add("https://active.test");
+  const original = e.add("https://restore-placement.test", {
+    zenWorkspaceId: "research",
+  });
+  const closed = await e.planApply({
+    action: "close",
+    tabIds: [original.mcpId],
+  });
+  const setState = mocks.SessionStore.setTabState;
+  mocks.SessionStore.setTabState = (tab, state) => {
+    setState(tab, state);
+    e.win.roots.get("work").tabsContainer.appendChild(tab);
+    assert.equal(tab.getAttribute("zen-workspace-id"), "research");
+  };
+  const reopened = await e.planApply({
+    action: "reopen",
+    operationId: closed.operationId,
+  });
+  assert.equal(reopened.summary.restored, 1);
+  const restored = e.service
+    .listTabs(e.win)
+    .find(tab => tab.url === original.url);
+  assert.equal(restored.getAttribute("zen-workspace-id"), "research");
+  assert.equal(
+    restored.parentElement,
+    e.win.roots.get("research").tabsContainer
+  );
 });
 
 test("batch close retains complete SessionStore history independently of native closed-tab retention", async () => {

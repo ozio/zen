@@ -2301,8 +2301,19 @@ export class ZenMcpWorkspaceTools {
     if (pinMode(tab.pinned, tab.hasAttribute("zen-essential")) !== mode) {
       this.browser.setPinMode(win, tab, mode);
     }
-    if (!item.essential && this.descriptor(tab).spaceId !== item.spaceId) {
-      win.gZenWorkspaces.moveTabToWorkspace(tab, item.spaceId);
+    if (!item.essential) {
+      const workspace = win.gZenWorkspaces.workspaceElement(item.spaceId);
+      const container = item.pinned
+        ? workspace?.pinnedTabsContainer
+        : workspace?.tabsContainer;
+      // SessionStore can restore the Space attribute before moving the node.
+      // Correct metadata alone does not make the tab selectable in that Space.
+      if (
+        this.descriptor(tab).spaceId !== item.spaceId ||
+        !container?.contains(tab)
+      ) {
+        win.gZenWorkspaces.moveTabToWorkspace(tab, item.spaceId);
+      }
     }
     if (item.groupId && groups.get(item.groupId)) {
       const group = groups.get(item.groupId);
