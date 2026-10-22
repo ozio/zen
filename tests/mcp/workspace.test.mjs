@@ -3,6 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import assert from "node:assert/strict";
+import { resolveObjectURL } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Worker } from "node:worker_threads";
@@ -50,7 +51,7 @@ const providerURL = moduleURL(
     .replace("resource:///modules/zen/mcp/ZenMcpTabQuery.sys.mjs", queryURL)
 );
 const workerURL = moduleURL(
-  (await load("ZenMcpLambdaWorker.js")).replace(
+  (await load("ZenMcpLambdaWorker.sys.mjs")).replace(
     "./ZenMcpTabQuery.sys.mjs",
     queryURL
   )
@@ -58,7 +59,13 @@ const workerURL = moduleURL(
 const { ZenMcpWorkspaceTools } = await import(providerURL);
 const { filterTabs, sortTabs } = await import(queryURL);
 
-function realWorker() {
+function realWorker(source) {
+  const entryURL = moduleURL(
+    source.replace(
+      "resource:///modules/zen/mcp/ZenMcpLambdaWorker.sys.mjs",
+      workerURL
+    )
+  );
   const worker = new Worker(
     `
     const { parentPort } = require('node:worker_threads');
@@ -68,7 +75,7 @@ function realWorker() {
     globalThis.postMessage = data => parentPort.postMessage(data);
     globalThis.addEventListener = (name, fn) => handlers.push(fn);
     parentPort.on('message', data => ready ? handlers.forEach(fn => fn({data})) : pending.push(data));
-    import(${JSON.stringify(workerURL)}).then(() => { ready = true; pending.forEach(data => handlers.forEach(fn => fn({data}))); });
+    import(${JSON.stringify(entryURL)}).then(() => { ready = true; pending.forEach(data => handlers.forEach(fn => fn({data}))); });
   `,
     { eval: true }
   );
@@ -83,7 +90,10 @@ function realWorker() {
     },
   };
   worker.on("message", data => api.onmessage?.({ data }));
-  worker.on("error", error => api.onerror?.(error));
+  worker.on("error", error => {
+    process.stderr.write(`Worker failed: ${error.message.slice(0, 300)}\n`);
+    api.onerror?.(error);
+  });
   return api;
 }
 
@@ -258,6 +268,7 @@ function environment(options = {}) {
         });
         tab.linkedBrowser = {
           tab,
+          asyncPermitUnload: async () => ({ permitUnload: !tab.blockClose }),
           get currentURI() {
             return { spec: tab.url };
           },
@@ -739,6 +750,99 @@ test("descriptor filters, scoped duplicates, natural stable sorting and malforme
   }
 });
 
+test("default standard-worker factory cleans up its private in-memory resource", async () => {
+  const savedWorker = Object.getOwnPropertyDescriptor(globalThis, "Worker");
+  const savedChrome = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "ChromeWorker"
+  );
+  const savedCi = Object.getOwnPropertyDescriptor(globalThis, "Ci");
+  const previousHandler = Services.io.getProtocolHandler;
+  const substitutions = new Map();
+  const blobs = [];
+  const handler = {
+    QueryInterface() {
+      return this;
+    },
+    setSubstitution(name, uri) {
+      if (uri) {
+        substitutions.set(name, uri.href);
+        blobs.push(uri.href);
+      } else {
+        substitutions.delete(name);
+      }
+    },
+  };
+  Services.io.getProtocolHandler = () => handler;
+  globalThis.Ci = { nsIResProtocolHandler: "resource-handler" };
+  globalThis.Worker = class {
+    constructor(url) {
+      const entry = substitutions.get(new URL(url).hostname);
+      assert.ok(entry, "Worker must use its private resource substitution");
+      let delegate,
+        stopped = false;
+      const messages = [];
+      const api = {
+        onmessage: null,
+        onerror: null,
+        postMessage(data) {
+          delegate ? delegate.postMessage(data) : messages.push(data);
+        },
+        terminate() {
+          stopped = true;
+          delegate?.terminate();
+        },
+      };
+      resolveObjectURL(entry)
+        .text()
+        .then(source => {
+          if (stopped) {
+            return;
+          }
+          delegate = realWorker(source);
+          delegate.onmessage = event => api.onmessage?.(event);
+          delegate.onerror = error => api.onerror?.(error);
+          messages.forEach(data => delegate.postMessage(data));
+        })
+        .catch(error => api.onerror?.(error));
+      return api;
+    }
+  };
+  globalThis.ChromeWorker = class {
+    constructor() {
+      throw new Error("Non-removable ctypes capability");
+    }
+  };
+  try {
+    const e = environment({ createWorker: undefined });
+    const tab = e.add("https://safe.test");
+    const result = await e.execute("zen_tabs_query", {
+      windowId: e.win.id,
+      filterLambda:
+        "(() => { if (typeof fetch !== 'undefined' || typeof ctypes !== 'undefined' || typeof Function !== 'undefined') { throw new Error('ambient capability'); } return t => t.url.includes('safe'); })()",
+    });
+    assert.deepEqual(
+      result.items.map(item => item.tabId),
+      [tab.mcpId]
+    );
+    assert.equal(substitutions.size, 0);
+    assert.equal(resolveObjectURL(blobs[0]), undefined);
+  } finally {
+    Services.io.getProtocolHandler = previousHandler;
+    for (const [key, descriptor] of [
+      ["Worker", savedWorker],
+      ["ChromeWorker", savedChrome],
+      ["Ci", savedCi],
+    ]) {
+      if (descriptor) {
+        Object.defineProperty(globalThis, key, descriptor);
+      } else {
+        delete globalThis[key];
+      }
+    }
+  }
+});
+
 test("real disposable worker evaluates lambdas over frozen pure data, strips ambient capabilities", async () => {
   const e = environment();
   e.add("https://github.com/a", { title: "Issue 10" });
@@ -880,6 +984,31 @@ test("previews are read-only, stale plans reject, applies are idempotent and foc
     error => error.code === "plan_conflict"
   );
   assert.ok(e.service.listTabs(e.win).includes(second));
+});
+
+test("stored sidebar indexes do not reuse the inactive strip's cached tab indexes", async () => {
+  const e = environment();
+  const tabs = [
+    e.add("https://a.test"),
+    e.add("https://b.test"),
+    e.add("https://c.test"),
+  ];
+  const state = e.browser.mediaState.bind(e.browser);
+  e.browser.mediaState = tab => ({ ...state(tab), index: 1 });
+  const selected = await e.execute("zen_tabs_query", { windowId: e.win.id });
+  assert.deepEqual(
+    selected.items.map(item => item.index),
+    [0, 1, 2]
+  );
+  await e.planApply({
+    action: "sort",
+    tabIds: [tabs[2].mcpId, tabs[0].mcpId, tabs[1].mcpId],
+    sort: { by: "index" },
+  });
+  assert.deepEqual(
+    e.service.listTabs(e.win).map(tab => tab.mcpId),
+    tabs.map(tab => tab.mcpId)
+  );
 });
 
 test("completed effects retain their receipt when restoring focus fails", async () => {
@@ -1243,6 +1372,95 @@ test("background/lazy opens reuse only same URL, Space and container; undo close
   assert.ok(e.service.listTabs(e.win).every(tab => !tab.loaded));
   await e.execute("zen_tabs_undo", { operationId: result.operationId });
   assert.deepEqual(e.service.listTabs(e.win), [current]);
+});
+
+test("cross-window moves and Undo request that an emptied donor window stays open", async () => {
+  const e = environment();
+  const first = e.add("https://a.test");
+  const second = e.add("https://b.test");
+  const target = e.createWindow("window-b");
+  for (const win of [e.win, target]) {
+    const adopt = win.gBrowser.adoptTab.bind(win.gBrowser);
+    win.gBrowser.adoptTab = (tab, options) => {
+      const donor = tab.ownerGlobal;
+      const last = e.service.listTabs(donor).length === 1;
+      const result = adopt(tab, options);
+      if (last && options.closeWindowWithLastTab !== false) {
+        donor.closed = true;
+      }
+      return result;
+    };
+  }
+  const moved = await e.planApply({
+    action: "move",
+    tabIds: [first.mcpId, second.mcpId],
+    destinationWindowId: target.id,
+  });
+  assert.equal(e.win.closed, false);
+  await e.execute("zen_tabs_undo", { operationId: moved.operationId });
+  assert.equal(target.closed, false);
+  assert.deepEqual(
+    e.service.listTabs(e.win).map(tab => tab.url),
+    ["https://a.test", "https://b.test"]
+  );
+});
+
+test("batch beforeunload checks leave confirmation tabs open without dispatching a blocking close", async () => {
+  const e = environment();
+  const dirty = e.add("https://dirty.test", { createLazyBrowser: false });
+  const clean = e.add("https://clean.test", { createLazyBrowser: false });
+  dirty.linkedBrowser.asyncPermitUnload = async action => {
+    assert.equal(action, "dontUnload");
+    return { permitUnload: false };
+  };
+  const remove = e.win.gBrowser.removeTab.bind(e.win.gBrowser);
+  const dispatched = [];
+  e.win.gBrowser.removeTab = (tab, options) => {
+    dispatched.push(tab);
+    assert.equal(options.skipPermitUnload, true);
+    return remove(tab, options);
+  };
+  const result = await e.planApply({
+    action: "close",
+    tabIds: [dirty.mcpId, clean.mcpId],
+  });
+  assert.deepEqual(dispatched, [clean]);
+  assert.deepEqual(
+    result.outcomes.map(item => item.status),
+    ["blocked", "closed"]
+  );
+  assert.equal(result.outcomes[0].error.code, "beforeunload_confirmation");
+  assert.ok(e.service.listTabs(e.win).includes(dirty));
+  const undone = await e.execute("zen_tabs_undo", {
+    operationId: result.operationId,
+  });
+  assert.equal(undone.undone, true);
+  assert.ok(e.service.listTabs(e.win).includes(dirty));
+});
+
+test("a background batch retains URL order when native inactive-Space insertion prepends", async () => {
+  const e = environment();
+  e.add("https://current.test");
+  const addTab = e.win.gBrowser.addTab.bind(e.win.gBrowser);
+  e.win.gBrowser.addTab = (url, options) => {
+    const tab = addTab(url, options);
+    const root = tab.parentElement;
+    root.insertBefore(tab, root.children[0]);
+    return tab;
+  };
+  const urls = [
+    "https://first.test",
+    "https://second.test",
+    "https://third.test",
+  ];
+  await e.planApply({ action: "open", urls, spaceId: "research", lazy: true });
+  const opened = e.service
+    .listTabs(e.win)
+    .filter(tab => tab.getAttribute("zen-workspace-id") === "research");
+  assert.deepEqual(
+    opened.map(tab => tab.url),
+    urls
+  );
 });
 
 test("pin saved/current URL, rename, reset, replace, unload and conflict-aware undo", async () => {

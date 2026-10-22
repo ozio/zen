@@ -122,7 +122,7 @@ function fixture({ enabled = true, definition, nativeFactory } = {}) {
   child.parent = top;
   top.children.push(child);
   const tab = {
-    ownerGlobal: win,
+    documentGlobal: win,
     linkedPanel: "panel-1",
     pending: false,
     private: false,

@@ -89,10 +89,16 @@ For custom rules, `filterLambda` returns a boolean and `sortKeyLambda` returns a
 scalar or scalar tuple from plain tab descriptors. Neither can access pages or
 browser APIs; evaluation has a short worker time limit.
 
-After apply, check every outcome, including blocked/pending/failed items. Reuse
+After apply, check every outcome, including blocked/pending/failed items. Batch
+close checks native beforeunload asynchronously: a page requiring confirmation
+stays open as `blocked` (`beforeunload_confirmation`), without a modal dialog.
+Reuse
 the same plan ID to read its retained result after a lost response; do not make
 a new plan to repeat an uncertain effect. `zen_tabs_undo` and reopen use a
-client-private operation receipt retained for thirty minutes; they are not a
+client-private operation receipt retained for thirty minutes, up to 32 operations
+and 32 MiB of SessionStore snapshots per client. At `receipt_limit` or `recovery_limit`, finish any
+needed Undo/recovery first. An explicit `zen_client_disconnect` clears this
+history; reinitialize afterward using the existing grant. Receipts are not a
 permanent backup and do not survive server restart or explicit disconnect.
 Undo refuses conflicts with later user changes. Background open uses
 `select:false`; `lazy` controls loading and `reuse:"url"` respects containers.

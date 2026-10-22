@@ -756,7 +756,9 @@ export class ZenMcpSiteTools {
       "unsupported_site_target",
       "Site tools require a nonprivate HTTP(S) content document with an ordinary origin"
     );
-    const windowId = this.service.windowId(tab.ownerGlobal);
+    const windowId = this.service.windowId(
+      tab.ownerGlobal ?? tab.documentGlobal
+    );
     requireValue(
       args.windowId === undefined || args.windowId === windowId,
       "wrong_site_target",

@@ -2999,13 +2999,17 @@ class nsZenWorkspaces {
         tab.hasAttribute("change-workspace") &&
         this.moveTabToWorkspace(tab, workspaceID)
       ) {
-        this.lastSelectedWorkspaceTabs[workspaceID] =
-          gZenGlanceManager.getTabOrGlanceParent(tab);
         tab.removeAttribute("change-workspace");
-        const workspace = this.getWorkspaceFromId(workspaceID);
-        setTimeout(() => {
-          this.changeWorkspace(workspace);
-        }, 0);
+        if (tab === gBrowser.selectedTab) {
+          this.lastSelectedWorkspaceTabs[workspaceID] =
+            gZenGlanceManager.getTabOrGlanceParent(tab);
+          const workspace = this.getWorkspaceFromId(workspaceID);
+          setTimeout(() => {
+            if (tab === gBrowser.selectedTab && !tab.closing) {
+              this.changeWorkspace(workspace);
+            }
+          }, 0);
+        }
       }
       return;
     }
@@ -3051,6 +3055,11 @@ class nsZenWorkspaces {
     const workspaceID = tab.getAttribute("zen-workspace-id");
     const isEssential = tab.getAttribute("zen-essential") === "true";
     if (tab.hasAttribute("zen-empty-tab")) {
+      return;
+    }
+    // Background loads must not replace the active Space or its remembered tab.
+    // Glance navigation above is normalized to its selected parent first.
+    if (tab !== gBrowser.selectedTab) {
       return;
     }
 

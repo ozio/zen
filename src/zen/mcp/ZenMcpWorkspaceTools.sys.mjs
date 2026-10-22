@@ -76,6 +76,56 @@ function selectsOnlyGroups(args, groupIds) {
   );
 }
 
+function expressionSource(source) {
+  if (source === undefined) {
+    return "null";
+  }
+  requireValue(
+    typeof source === "string" &&
+      source.length <= 8192 &&
+      !/\bimport\b/.test(source),
+    "invalid_expression",
+    "Lambda must be at most 8192 characters and cannot import modules"
+  );
+  return source;
+}
+
+function createExpressionWorker(source) {
+  // A system-principal worker must use a trusted resource URI. The substitution
+  // keeps the entry module in memory and is never exposed to content pages.
+  const name = `zen-mcp-expression-${uuid()}`;
+  const handler = Services.io
+    .getProtocolHandler("resource")
+    .QueryInterface(Ci.nsIResProtocolHandler);
+  const url = URL.createObjectURL(
+    new Blob([source], { type: "text/javascript" })
+  );
+  const cleanup = () => {
+    try {
+      handler.setSubstitution(name, null);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+  try {
+    handler.setSubstitution(name, Services.io.newURI(url));
+    // ChromeWorker has a non-removable ctypes FFI. Standard workers do not.
+    const worker = new Worker(`resource://${name}/`, { type: "module" });
+    const terminate = worker.terminate.bind(worker);
+    worker.terminate = () => {
+      try {
+        terminate();
+      } finally {
+        cleanup();
+      }
+    };
+    return worker;
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}
+
 function pinMode(pinned, essential) {
   if (essential) {
     return "essential";
@@ -115,7 +165,7 @@ export class ZenMcpWorkspaceTools {
     {
       now = () => Date.now(),
       id = uuid,
-      createWorker = url => new ChromeWorker(url, { type: "module" }),
+      createWorker = createExpressionWorker,
       workerTimeout = 500,
     } = {}
   ) {
@@ -417,6 +467,19 @@ export class ZenMcpWorkspaceTools {
 
   descriptor(tab) {
     const state = this.browser.mediaState(tab);
+    // Firefox's cached tab.index only tracks its active strip. Zen keeps tabs
+    // in inactive Spaces as well; its stored-array identity is invalidated on
+    // native ordering changes, making this map both current and cheap to reuse.
+    const win = owner(tab);
+    const stored =
+      win.gZenWorkspaces.allStoredTabs ?? this.service.listTabs(win);
+    this.indexMaps ??= new WeakMap();
+    let indexes = this.indexMaps.get(stored);
+    if (!indexes) {
+      indexes = new Map(stored.map((item, index) => [item, index]));
+      this.indexMaps.set(stored, indexes);
+    }
+    state.index = indexes.get(tab) ?? null;
     const folderPath = [];
     let group = tab.group;
     while (group) {
@@ -479,9 +542,14 @@ export class ZenMcpWorkspaceTools {
       "selection_too_large",
       "Selection exceeds worker data limit; narrow the window first"
     );
-    const worker = this.createWorker(
-      "resource:///modules/zen/mcp/ZenMcpLambdaWorker.js"
-    );
+    // Parse caller expressions as module source, avoiding system-principal
+    // eval/Function, which Gecko's CSP forbids. The unconditional first call
+    // removes capabilities before evaluating any interpolated expression.
+    const worker = this.createWorker(`
+      import { lockdown, serve } from "resource:///modules/zen/mcp/ZenMcpLambdaWorker.sys.mjs";
+      lockdown();
+      serve(\n(${expressionSource(args.filterLambda)})\n,\n(${expressionSource(args.sortKeyLambda)})\n);
+    `);
     this.workers.add(worker);
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -547,8 +615,6 @@ export class ZenMcpWorkspaceTools {
           jsonClone({
             items,
             filter: args.filter ?? {},
-            filterLambda: args.filterLambda,
-            sortKeyLambda: args.sortKeyLambda,
           })
         );
       } catch (error) {
@@ -1513,6 +1579,48 @@ export class ZenMcpWorkspaceTools {
     }
   }
 
+  hasPendingClose(operation) {
+    return operation.outcomes.some(
+      item =>
+        ["pending", "blocked"].includes(item.status) &&
+        operation.pendingTabs?.has(item.tabId)
+    );
+  }
+
+  async permitClose(tab, signal) {
+    if (!tab.linkedPanel || tab.hasAttribute("pending")) {
+      return { permitUnload: true };
+    }
+    const original = revision([this.descriptor(tab)], { selection: true });
+    let timer, cancel;
+    let result;
+    try {
+      result = await Promise.race([
+        // Run the native check without opening a modal or entering the
+        // synchronous permitUnload spin loop. A page needing confirmation
+        // remains open and is reported as blocked in the batch receipt.
+        tab.linkedBrowser.asyncPermitUnload("dontUnload"),
+        new Promise((resolve, reject) => {
+          timer = setTimeout(
+            () => resolve({ permitUnload: false, pending: true }),
+            1500
+          );
+          cancel = () =>
+            reject(new McpToolError("cancelled", "Close check cancelled"));
+          signal?.addEventListener("abort", cancel, { once: true });
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
+    }
+    abort(signal);
+    if (revision([this.descriptor(tab)], { selection: true }) !== original) {
+      return { permitUnload: false, changed: true };
+    }
+    return result;
+  }
+
   async perform(plan, operation, client, signal) {
     const win = this.browser.window(plan.args.windowId);
     if (plan.args.action === "move") {
@@ -1611,9 +1719,7 @@ export class ZenMcpWorkspaceTools {
       );
       await this.restoreClosed(source, operation, signal);
       source.undone =
-        !source.outcomes.some(item =>
-          ["pending", "blocked"].includes(item.status)
-        ) &&
+        !this.hasPendingClose(source) &&
         source.outcomes
           .filter(item => item.status === "closed")
           .every(item => source.restoredIds.includes(item.tabId));
@@ -1626,9 +1732,29 @@ export class ZenMcpWorkspaceTools {
         tab = this.browser.tab(id);
         const tabWin = owner(tab);
         if (plan.args.action === "close") {
+          const permission = await this.permitClose(tab, signal);
+          if (!permission.permitUnload) {
+            let code = "beforeunload_confirmation";
+            let message = "Page requires confirmation before closing";
+            if (permission.changed) {
+              code = "close_target_changed";
+              message = "Tab changed during its unload check; query again";
+            } else if (permission.pending) {
+              code = "unload_check_pending";
+              message =
+                "Native unload check is still pending; no close was requested";
+            }
+            operation.outcomes.push({
+              tabId: id,
+              status: "blocked",
+              error: { code, message },
+            });
+            continue;
+          }
           tabWin.gBrowser.removeTab(tab, {
             animate: false,
             closeWindowWithLastTab: false,
+            skipPermitUnload: true,
           });
           try {
             await this.browser.waitFor(
@@ -1746,6 +1872,7 @@ export class ZenMcpWorkspaceTools {
         moved = target.win.gBrowser.adoptTabGroup(unit, {
           tabIndex: target.win.gBrowser.tabs.length,
           selectTab: false,
+          closeWindowWithLastTab: false,
         });
         if (moved) {
           operation.createdGroups.push({
@@ -1757,6 +1884,7 @@ export class ZenMcpWorkspaceTools {
         moved = target.win.gBrowser.adoptTab(unit, {
           tabIndex: target.win.gBrowser.tabs.length,
           selectTab: false,
+          closeWindowWithLastTab: false,
           spaceId: target.spaceId ?? target.win.gZenWorkspaces.activeWorkspace,
         });
       }
@@ -1922,6 +2050,10 @@ export class ZenMcpWorkspaceTools {
             anchor = tab;
           }
         }
+        // Native background insertion can prepend each new tab in an inactive
+        // Space. Use the first new tab as a stable anchor for the remaining
+        // entries so their final order follows the supplied URL list.
+        anchor ??= tab;
         operation.outcomes.push({ tabId: id, status: "opened" });
       } catch (error) {
         operation.outcomes.push({
@@ -2215,6 +2347,7 @@ export class ZenMcpWorkspaceTools {
           tab = win.gBrowser.adoptTab(tab, {
             tabIndex: win.gBrowser.tabs.length,
             selectTab: false,
+            closeWindowWithLastTab: false,
             spaceId: item.spaceId,
           });
           requireValue(
@@ -2413,10 +2546,7 @@ export class ZenMcpWorkspaceTools {
         }
       }
       operation.undone =
-        operation.action !== "close" ||
-        !operation.outcomes.some(item =>
-          ["pending", "blocked"].includes(item.status)
-        );
+        operation.action !== "close" || !this.hasPendingClose(operation);
       operation.undoOutcomes = recovery.outcomes;
       return {
         operationId: args.operationId,

@@ -10,7 +10,7 @@ EXTRA_JS_MODULES.zen.mcp += [
     "ZenMcpCredentials.sys.mjs",
     "ZenMcpDataTools.sys.mjs",
     "ZenMcpDevTools.sys.mjs",
-    "ZenMcpLambdaWorker.js",
+    "ZenMcpLambdaWorker.sys.mjs",
     "ZenMcpMediaTools.sys.mjs",
     "ZenMcpPageTools.sys.mjs",
     "ZenMcpProtocol.sys.mjs",
