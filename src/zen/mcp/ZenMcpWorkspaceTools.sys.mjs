@@ -1638,7 +1638,7 @@ export class ZenMcpWorkspaceTools {
             this.service.tabId(tab)
           );
           try {
-            const moved = await this.moveUnit(unit, target, operation);
+            const moved = await this.moveUnit(unit, target, operation, signal);
             if (anchor) {
               if (move.args.beforeId) {
                 target.win.gBrowser.moveTabBefore(moved, anchor);
@@ -1835,7 +1835,24 @@ export class ZenMcpWorkspaceTools {
     }
   }
 
-  async moveUnit(unit, target, operation) {
+  async removeEmptyFolder(folder, signal) {
+    requireValue(
+      !this.groupTabs(folder).length,
+      "folder_not_empty",
+      "Only an empty folder shell may be removed after adoption"
+    );
+    await folder.delete();
+    // delete() resolves before the native close animation removes the node.
+    // Undo must create a fresh folder, never refill a shell awaiting removal.
+    await this.browser.waitFor(
+      () => !folder.isConnected,
+      signal,
+      "The empty folder is still closing; inspect its operation receipt",
+      5000
+    );
+  }
+
+  async moveUnit(unit, target, operation, signal) {
     const source = owner(unit) ?? owner(this.itemTabs(unit)[0]);
     const oldTabs = this.itemTabs(unit);
     const originalPins = oldTabs.map(tab => ({
@@ -1867,10 +1884,11 @@ export class ZenMcpWorkspaceTools {
           await this.moveUnit(
             child,
             { ...target, folder: moved, anchor: null },
-            operation
+            operation,
+            signal
           );
         }
-        await unit.delete();
+        await this.removeEmptyFolder(unit, signal);
       } else if (unit.tabs) {
         moved = target.win.gBrowser.adoptTabGroup(unit, {
           tabIndex: target.win.gBrowser.tabs.length,
@@ -2560,7 +2578,7 @@ export class ZenMcpWorkspaceTools {
             .find(item => item.id === created.groupId);
           if (group && !this.groupTabs(group).length) {
             if (group.isZenFolder) {
-              await group.delete();
+              await this.removeEmptyFolder(group, signal);
             } else {
               group.remove();
             }

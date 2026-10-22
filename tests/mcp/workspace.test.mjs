@@ -123,6 +123,9 @@ class Element {
   get group() {
     return this.parentElement?.groupOwner ?? null;
   }
+  get isConnected() {
+    return !!this.parentElement;
+  }
   get nextElementSibling() {
     return (
       this.parentElement?.children[
@@ -1188,6 +1191,45 @@ test("cross-window batch adoption and whole nested folders preserve hierarchy an
     "root"
   );
   assert.equal(targetWin.groups.length, 0);
+});
+
+test("cross-window folder receipts wait for delayed native removal before Undo can reuse an ID", async () => {
+  const e = environment();
+  const target = e.createWindow("window-b");
+  const tab = e.add("https://delayed-removal.test");
+  const original = e.createGroup(e.win, "animated-folder", [tab]);
+  const deferRemoval = group => {
+    const remove = group.delete;
+    group.delete = async () => {
+      setImmediate(() => void remove());
+    };
+  };
+  deferRemoval(original);
+  e.browser.waitFor = async predicate => {
+    for (let i = 0; !predicate() && i < 10; i++) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.ok(predicate(), "Native folder close has completed");
+  };
+  const moved = await e.planApply({
+    action: "move",
+    groupIds: [original.id],
+    destinationWindowId: target.id,
+    spaceId: "research",
+  });
+  assert.equal(moved.summary.moved, 1);
+  assert.equal(original.isConnected, false);
+  const adopted = target.groups.find(group => group.id === original.id);
+  deferRemoval(adopted);
+  await e.execute("zen_tabs_undo", { operationId: moved.operationId });
+  const restored = e.win.groups.find(group => group.id === original.id);
+  assert.notEqual(restored, original);
+  assert.equal(restored.isConnected, true);
+  assert.equal(restored.tabs.length, 1);
+  assert.equal(adopted.isConnected, false);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(restored.isConnected, true);
+  assert.equal(e.service.listTabs(e.win).length, 1);
 });
 
 test("whole folder move within a window restores its original Space, parent and position", async () => {
