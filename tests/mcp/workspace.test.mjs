@@ -1553,3 +1553,76 @@ test("native discard restrictions, cancellation, empty future rules and bounded 
   assert.equal(e.provider.operations.size, 0);
   assert.equal(e.provider.selections.size, 0);
 });
+
+test("independent windows retain canonical pin state during folder adoption and Undo", async () => {
+  const e = environment();
+  const target = e.createWindow("independent-window");
+  delete target.gZenWindowSync;
+  const a = e.add("https://a.test/current");
+  const b = e.add("https://b.test/current");
+  const child = e.createGroup(e.win, "local-child", [b]);
+  const root = e.createGroup(e.win, "local-root", [a]);
+  e.browser.nestFolder(e.win, child, root);
+  for (const tab of [a, b]) {
+    e.win.gZenWindowSync.setPinnedInitialState(
+      tab,
+      { url: tab.url + "/saved" },
+      "icon"
+    );
+  }
+  const result = await e.planApply({
+    action: "move",
+    groupIds: [root.id],
+    tabIds: [],
+    destinationWindowId: target.id,
+    spaceId: "research",
+  });
+  assert.equal(result.summary.moved, 2, JSON.stringify(result));
+  const moved = e.service.listTabs(target);
+  assert.equal(moved.length, 2);
+  assert.ok(
+    moved.every(
+      tab =>
+        tab.pinned &&
+        tab._zenPinnedInitialState.entry.url === tab.url + "/saved"
+    )
+  );
+  const undone = await e.execute("zen_tabs_undo", {
+    operationId: result.operationId,
+  });
+  assert.equal(undone.undone, true);
+  assert.equal(e.service.listTabs(e.win).length, 2);
+  assert.equal(e.service.listTabs(target).length, 0);
+  assert.equal(
+    e.win.groups.find(group => group.id === child.id).group.id,
+    root.id
+  );
+});
+
+test("independent-window pins support replace, explicit saved URL and Undo without synchronization", async () => {
+  const e = environment();
+  const target = e.createWindow("independent-window");
+  delete target.gZenWindowSync;
+  const tab = e.add("https://current.test/", { win: target, pinned: true });
+  tab._zenPinnedInitialState = {
+    entry: { url: "https://saved.test/" },
+    image: "old",
+  };
+  const set = await e.execute("zen_pins", {
+    windowId: target.id,
+    action: "setUrl",
+    tabIds: [tab.mcpId],
+    url: "https://edited.test/",
+  });
+  assert.equal(tab._zenPinnedInitialState.entry.url, "https://edited.test/");
+  await e.execute("zen_tabs_undo", { operationId: set.operationId });
+  assert.equal(tab._zenPinnedInitialState.entry.url, "https://saved.test/");
+  const replace = await e.execute("zen_pins", {
+    windowId: target.id,
+    action: "replace",
+    tabIds: [tab.mcpId],
+  });
+  assert.equal(tab._zenPinnedInitialState.entry.url, "https://current.test/");
+  await e.execute("zen_tabs_undo", { operationId: replace.operationId });
+  assert.equal(tab._zenPinnedInitialState.entry.url, "https://saved.test/");
+});

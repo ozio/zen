@@ -1909,11 +1909,7 @@ export class ZenMcpWorkspaceTools {
           this.browser.setPinMode(target.win, newTabs[index], pin.mode);
         }
         if (pin.state) {
-          target.win.gZenWindowSync.setPinnedInitialState(
-            newTabs[index],
-            pin.state.entry,
-            pin.state.image
-          );
+          this.setPinnedState(newTabs[index], pin.state);
         }
       });
     }
@@ -2083,6 +2079,38 @@ export class ZenMcpWorkspaceTools {
     }
   }
 
+  setPinnedState(tab, state) {
+    const win = owner(tab);
+    if (win.gZenWindowSync) {
+      win.gZenWindowSync.setPinnedInitialState(tab, state.entry, state.image);
+    } else {
+      // Independent windows have no synchronization manager. Their canonical
+      // pin state belongs to this tab, without propagating to synced windows.
+      tab._zenPinnedInitialState = jsonClone(state);
+    }
+  }
+
+  async replacePinnedState(tab) {
+    const win = owner(tab);
+    if (win.gZenWindowSync) {
+      await win.gZenWindowSync.setPinnedTabState(tab);
+      return;
+    }
+    if (tab.linkedPanel && !tab.hasAttribute("pending")) {
+      await lazy.TabStateFlusher.flush(tab.linkedBrowser);
+    }
+    const state = JSON.parse(lazy.SessionStore.getTabState(tab));
+    const index = (state.index || state.entries?.length || 1) - 1;
+    const entry = state.entries?.[index] ?? {};
+    this.setPinnedState(tab, {
+      entry: {
+        url: entry.url ?? this.descriptor(tab).url,
+        title: entry.title ?? tab.label,
+      },
+      image: tab.getAttribute("image"),
+    });
+  }
+
   async pinAction(tab, args, signal) {
     const win = owner(tab);
     requireValue(
@@ -2107,16 +2135,15 @@ export class ZenMcpWorkspaceTools {
         break;
       }
       case "replace":
-        await win.gZenWindowSync.setPinnedTabState(tab);
+        await this.replacePinnedState(tab);
         win.gZenPinnedTabManager.resetPinChangedUrl(tab);
         break;
       case "setUrl":
         Services.io.newURI(args.url);
-        win.gZenWindowSync.setPinnedUrl(
-          tab,
-          args.url,
-          tab.getAttribute("image")
-        );
+        this.setPinnedState(tab, {
+          entry: { url: args.url, title: tab.zenStaticLabel },
+          image: tab.getAttribute("image"),
+        });
         break;
       case "rename":
         this.rename(tab, args.title);
@@ -2368,11 +2395,7 @@ export class ZenMcpWorkspaceTools {
         }
         this.rename(tab, item.customTitle ?? "");
         if (item.pinnedInitialState) {
-          win.gZenWindowSync.setPinnedInitialState(
-            tab,
-            item.pinnedInitialState.entry,
-            item.pinnedInitialState.image
-          );
+          this.setPinnedState(tab, item.pinnedInitialState);
         }
         native.push({ tab, original: item });
       }
