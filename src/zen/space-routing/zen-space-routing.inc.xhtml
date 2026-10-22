@@ -62,12 +62,113 @@
       </html:div>
     </hbox>
     <html:hr />
-    <vbox id="sr-content">
-      <vbox id="sr-empty-content">
-        <image class="sr-airplane"></image>
-        <p data-l10n-id="zen-space-routing-rulepanel-placeholder"></p>
+    <vbox id="sr-body">
+      <p id="sr-priority" data-l10n-id="zen-space-routing-priority"></p>
+      <vbox id="sr-content">
+        <vbox id="sr-empty-content">
+          <image class="sr-airplane"></image>
+          <p data-l10n-id="zen-space-routing-rulepanel-placeholder"></p>
+        </vbox>
       </vbox>
-# All rules will be injected here later
+      <html:section id="sr-ai">
+        <html:label class="sr-ai-toggle"
+          ><html:input id="sr-ai-enabled" type="checkbox" /><html:span
+            data-l10n-id="zen-space-routing-ai-enabled"
+          ></html:span
+        ></html:label>
+        <html:p data-l10n-id="zen-space-routing-ai-scope"></html:p>
+        <html:details>
+          <html:summary
+            data-l10n-id="zen-space-routing-ai-settings"
+          ></html:summary>
+          <html:label class="sr-ai-field"
+            ><html:span data-l10n-id="zen-space-routing-ai-key"></html:span
+            ><html:input
+              id="sr-ai-key"
+              type="password"
+              autocomplete="off"
+              maxlength="4096"
+          /></html:label>
+          <html:div class="sr-ai-actions">
+            <html:button
+              id="sr-ai-save-key"
+              data-l10n-id="zen-space-routing-ai-save-key"
+            ></html:button>
+            <html:button
+              id="sr-ai-clear-key"
+              data-l10n-id="zen-space-routing-ai-clear-key"
+            ></html:button>
+            <html:button
+              id="sr-ai-check-key"
+              data-l10n-id="zen-space-routing-ai-check-key"
+            ></html:button>
+          </html:div>
+          <html:p id="sr-ai-status" role="status"></html:p>
+          <html:label class="sr-ai-field"
+            ><html:span data-l10n-id="zen-space-routing-ai-prompt"></html:span
+            ><html:textarea
+              id="sr-ai-prompt"
+              rows="5"
+              maxlength="8000"
+            ></html:textarea
+          ></html:label>
+          <html:button
+            id="sr-ai-reset-prompt"
+            data-l10n-id="zen-space-routing-ai-reset-prompt"
+          ></html:button>
+          <html:h4 data-l10n-id="zen-space-routing-ai-spaces"></html:h4>
+          <html:div id="sr-ai-spaces"></html:div>
+          <html:div class="sr-ai-thresholds">
+            <html:label
+              ><html:span
+                data-l10n-id="zen-space-routing-ai-probability"
+              ></html:span
+              ><html:input
+                id="sr-ai-probability"
+                type="number"
+                min="50"
+                max="100"
+                step="5"
+            /></html:label>
+            <html:label
+              ><html:span data-l10n-id="zen-space-routing-ai-margin"></html:span
+              ><html:input
+                id="sr-ai-margin"
+                type="number"
+                min="0"
+                max="100"
+                step="5"
+            /></html:label>
+            <html:label
+              ><html:span
+                data-l10n-id="zen-space-routing-ai-timeout"
+              ></html:span
+              ><html:input
+                id="sr-ai-timeout"
+                type="number"
+                min="200"
+                max="5000"
+                step="100"
+            /></html:label>
+          </html:div>
+          <html:p data-l10n-id="zen-space-routing-ai-privacy"></html:p>
+        </html:details>
+      </html:section>
+      <html:section id="sr-preview">
+        <html:label class="sr-ai-field"
+          ><html:span data-l10n-id="zen-space-routing-preview"></html:span
+          ><html:input
+            id="sr-preview-url"
+            type="url"
+            placeholder="https://example.com/page"
+        /></html:label>
+        <html:button
+          id="sr-preview-run"
+          data-l10n-id="zen-space-routing-preview-run"
+        ></html:button>
+        <html:p id="sr-preview-result" role="status"></html:p>
+        <html:div id="sr-preview-probabilities"></html:div>
+      </html:section>
     </vbox>
     <html:hr />
     <hbox id="sr-footer">
@@ -75,7 +176,6 @@
       <html:div class="sr-left">
         <menulist class="select" id="sr-default-external-open-in">
           <menupopup id="sr-default-external-open-in-popup">
-# Select open in types will be injected here
           </menupopup>
         </menulist>
       </html:div>

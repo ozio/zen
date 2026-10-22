@@ -3,17 +3,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { JSONFile } from "resource://gre/modules/JSONFile.sys.mjs";
+import { setTimeout, clearTimeout } from "resource://gre/modules/Timer.sys.mjs";
+import {
+  fallbackSpace,
+  matchURLMask,
+} from "resource:///modules/zen/spacerouting/ZenSpaceRoutingPolicy.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  gZenSpaceRoutingAI:
+    "resource:///modules/zen/spacerouting/ZenSpaceRoutingAI.sys.mjs",
 });
 
 class nsZenSpaceRoutingManager {
   #file = null;
   #saveFilename = "zen-space-routing.jsonlz4";
+  #externalDecisions = new WeakMap();
+  #revision = 0;
 
   static SKIP_TYPE = {
     NONE: "none",
@@ -22,7 +31,7 @@ class nsZenSpaceRoutingManager {
   };
 
   constructor() {
-    this.#readFromDisk();
+    this.ready = this.#readFromDisk();
   }
 
   /**
@@ -105,7 +114,16 @@ class nsZenSpaceRoutingManager {
       };
     }
 
-    targetRoute = this.routeUri(uriString, options);
+    const externalDecision =
+      options.fromExternal && this.#externalDecisions.get(win);
+    targetRoute =
+      externalDecision?.url === uriString
+        ? externalDecision.spaceId
+        : this.routeUri(uriString, options);
+    if (targetRoute === "first-space") {
+      targetRoute =
+        win.gZenWorkspaces.getWorkspaces()[0]?.uuid ?? "most-recent-space";
+    }
     switch (targetRoute) {
       case "most-recent-space":
         break;
@@ -196,7 +214,11 @@ class nsZenSpaceRoutingManager {
       return null;
     }
 
-    const targetRoute = this.routeUri(uriString, { fromExternal: false });
+    let targetRoute = this.routeUri(uriString, { fromExternal: false });
+    if (targetRoute === "first-space") {
+      targetRoute =
+        win.gZenWorkspaces.getWorkspaces()[0]?.uuid ?? "most-recent-space";
+    }
 
     // No specific destination, or the tab is already where the rule points.
     if (
@@ -217,11 +239,16 @@ class nsZenSpaceRoutingManager {
    *
    * @param {nsIURI} uri - The URI about to be opened
    * @param {Window} defaultWindow - The window Firefox picked
+   * @param {string|null} resolvedSpaceId - An already resolved destination, if available
    * @returns {Window} The window the URI should be opened in
    */
-  getWindowForExternalUri(uri, defaultWindow) {
+  getWindowForExternalUri(uri, defaultWindow, resolvedSpaceId = null) {
     try {
-      const targetRoute = this.routeUri(uri?.spec, { fromExternal: true });
+      let targetRoute =
+        resolvedSpaceId || this.routeUri(uri?.spec, { fromExternal: true });
+      if (targetRoute === "first-space") {
+        targetRoute = defaultWindow.gZenWorkspaces.getWorkspaces()[0]?.uuid;
+      }
       if (
         targetRoute === "most-recent-space" ||
         this.#isDisplayingWorkspace(defaultWindow, targetRoute)
@@ -380,11 +407,9 @@ class nsZenSpaceRoutingManager {
     const isExternal = options.fromExternal;
 
     // Go over all routes and return the open type for the first match
-    const allRoutes = this.getAllRoutes();
-    for (const route of allRoutes) {
-      if (this.isRouteMatching(uriString, route)) {
-        return route.openIn;
-      }
+    const route = this.findMatchingRoute(uriString);
+    if (route) {
+      return route.openIn;
     }
 
     // If nothing matches and it's an external link,
@@ -395,6 +420,167 @@ class nsZenSpaceRoutingManager {
 
     // If nothing matches, open in most recent space
     return "most-recent-space";
+  }
+
+  findMatchingRoute(uriString) {
+    return (
+      this.getAllRoutes().find(route =>
+        this.isRouteMatching(uriString, route)
+      ) ?? null
+    );
+  }
+
+  /**
+   * Resolve an external URL without opening a tab. Used by the editor too.
+   *
+   * @param {string} uriString - The external URL
+   * @param {Window} win - The initial browser window
+   * @param {object} options - Optional request controls
+   * @param {AbortSignal} [options.signal] - Cancels a preview request
+   * @returns {Promise<object>} The decision and fallback destination
+   */
+  async resolveExternalURI(uriString, win, { signal } = {}) {
+    await this.ready;
+    const workspaces = win.gZenWorkspaces;
+    const spaces = workspaces?.getWorkspaces() || [];
+    const fallback = () =>
+      fallbackSpace(
+        workspaces?.getWorkspaces() || [],
+        this.getDefaultExternalRoute(),
+        workspaces?.activeWorkspace
+      );
+    if (
+      lazy.PrivateBrowsingUtils.isWindowPrivate(win) ||
+      !workspaces?.workspaceEnabled
+    ) {
+      return { reason: "excluded-window", spaceId: null };
+    }
+    const rule = this.findMatchingRoute(uriString);
+    if (rule) {
+      const destination =
+        ["first-space", "most-recent-space"].includes(rule.openIn) ||
+        spaces.some(space => space.uuid === rule.openIn)
+          ? rule.openIn
+          : this.getDefaultExternalRoute();
+      return {
+        reason: "rule",
+        ruleId: rule.id,
+        spaceId: fallbackSpace(spaces, destination, workspaces.activeWorkspace),
+      };
+    }
+    const revision = this.#revision;
+    const identity = JSON.stringify(
+      spaces.map(space => [space.uuid, space.name, space.containerTabId])
+    );
+    const result = await lazy.gZenSpaceRoutingAI.classify(uriString, spaces, {
+      signal,
+    });
+    if (
+      revision !== this.#revision ||
+      identity !==
+        JSON.stringify(
+          workspaces
+            .getWorkspaces()
+            .map(space => [space.uuid, space.name, space.containerTabId])
+        )
+    ) {
+      return { reason: "settings-changed", spaceId: fallback() };
+    }
+    return { ...result, spaceId: result.spaceId || fallback() };
+  }
+
+  /**
+   * BrowserContentHandler stays synchronous. Its continuation runs once, after
+   * startup and classification, with a decision scoped to this exact openURI call.
+   * addTab/openURI keep their synchronous native interface contracts.
+   *
+   * @param {nsIURI} uri - The external URL
+   * @param {Window|Promise<Window>} windowOrPromise - The initial browser window
+   * @param {Function} openInWindow - Synchronous native open callback
+   */
+  async openExternalURI(uri, windowOrPromise, openInWindow) {
+    let win;
+    let opened = false;
+    const openOnce = (targetWindow, decision) => {
+      if (opened || !targetWindow || targetWindow.closed) {
+        return;
+      }
+      opened = true;
+      const previous = this.#externalDecisions.get(targetWindow);
+      if (decision?.spaceId) {
+        this.#externalDecisions.set(targetWindow, {
+          url: uri.spec,
+          spaceId: decision.spaceId,
+        });
+      }
+      try {
+        openInWindow(targetWindow, !!decision?.spaceId);
+      } finally {
+        if (previous) {
+          this.#externalDecisions.set(targetWindow, previous);
+        } else {
+          this.#externalDecisions.delete(targetWindow);
+        }
+      }
+    };
+    try {
+      win = await windowOrPromise;
+      if (!win || win.closed) {
+        return;
+      }
+      // Chrome may still be loading. Readiness has its own bounded wait.
+      await new Promise((resolve, reject) => {
+        let timer;
+        const finish = error => {
+          clearTimeout(timer);
+          error ? reject(error) : resolve();
+        };
+        // The early blank chrome document unloads when browser.xhtml replaces
+        // it. Only win.closed means the window itself went away; an unload here
+        // must not open the URL before browserDOMWindow has initialized.
+        const until = Date.now() + 30000;
+        const poll = () => {
+          if (win.closed) {
+            finish(new Error("Window closed"));
+          } else if (win.gZenStartup?.isReady) {
+            finish();
+          } else if (Date.now() >= until) {
+            finish(new Error("Startup timeout"));
+          } else {
+            timer = setTimeout(poll, 25);
+          }
+        };
+        poll();
+      });
+      const decision = await this.resolveExternalURI(uri.spec, win);
+      if (win.closed) {
+        return;
+      }
+      const target = decision.spaceId
+        ? this.getWindowForExternalUri(uri, win, decision.spaceId)
+        : win;
+      openOnce(target, decision);
+    } catch {
+      // Once opening begins its outcome may be unknown: never open a second tab.
+      openOnce(win, null);
+    }
+  }
+
+  moveRoute(id, offset) {
+    const routes = this.#file.data.routes;
+    const index = routes.findIndex(route => route.id === id);
+    const target = index + offset;
+    if (
+      index < 0 ||
+      ![-1, 1].includes(offset) ||
+      target < 0 ||
+      target >= routes.length
+    ) {
+      return false;
+    }
+    [routes[index], routes[target]] = [routes[target], routes[index]];
+    this.#revision++;
+    return true;
   }
 
   /**
@@ -416,6 +602,8 @@ class nsZenSpaceRoutingManager {
 
     const uri = uriString.toLowerCase();
     switch (route.matchType) {
+      case "url-mask":
+        return matchURLMask(uriString, route.reference);
       case "contains":
         if (uri.includes(reference)) {
           return true;
@@ -536,6 +724,7 @@ class nsZenSpaceRoutingManager {
       return;
     }
     this.#file.data.routes[idx] = structuredClone(route);
+    this.#revision++;
   }
 
   /**
@@ -546,6 +735,7 @@ class nsZenSpaceRoutingManager {
   createNewRoute() {
     const newRoute = this.getEmptyRoute();
     this.#file.data.routes.push(newRoute);
+    this.#revision++;
 
     return structuredClone(newRoute);
   }
@@ -561,13 +751,14 @@ class nsZenSpaceRoutingManager {
       return;
     }
     this.#file.data.routes.splice(objWithIdIndex, 1);
+    this.#revision++;
   }
 
   /**
    * @returns {string} Returns the default route type for external links
    */
   getDefaultExternalRoute() {
-    return this.#file?.data?.defaultRouteExternal ?? "most-recent-space";
+    return this.#file?.data?.defaultRouteExternal ?? "first-space";
   }
 
   /**
@@ -575,6 +766,7 @@ class nsZenSpaceRoutingManager {
    */
   setDefaultExternalRoute(routeType) {
     this.#file.data.defaultRouteExternal = routeType;
+    this.#revision++;
   }
 
   /**
@@ -648,7 +840,7 @@ class nsZenSpaceRoutingManager {
           data.routes = [];
         }
         if (typeof data.defaultRouteExternal !== "string") {
-          data.defaultRouteExternal = "most-recent-space";
+          data.defaultRouteExternal = "first-space";
         }
         return data;
       },

@@ -6,6 +6,9 @@
 const { gZenSpaceRoutingManager } = ChromeUtils.importESModule(
   "resource:///modules/zen/spacerouting/ZenSpaceRoutingManager.sys.mjs"
 );
+const { ZenSpaceRoutingAISettings } = ChromeUtils.importESModule(
+  "resource:///modules/zen/spacerouting/ZenSpaceRoutingAISettings.mjs"
+);
 
 export class nsZenSpaceRoutingDialog {
   doc = null;
@@ -41,7 +44,11 @@ export class nsZenSpaceRoutingDialog {
   /**
    * Initializes the boost share instance by setting up event listeners for all UI controls.
    */
-  init() {
+  async init() {
+    await gZenSpaceRoutingManager.ready;
+    if (this.editorWindow.closed) {
+      return;
+    }
     this.editorWindow.addEventListener("unload", () => this.handleClose(), {
       once: true,
     });
@@ -75,6 +82,11 @@ export class nsZenSpaceRoutingDialog {
     });
 
     this.initRouteList();
+    this.aiSettings = new ZenSpaceRoutingAISettings(
+      this.doc,
+      this.openerWindow
+    );
+    await this.aiSettings.init();
     this.initialized = true;
   }
 
@@ -145,7 +157,7 @@ export class nsZenSpaceRoutingDialog {
     const matchTypePopup = this.doc.createXULElement("menupopup");
     matchTypeMenulist.appendChild(matchTypePopup);
 
-    ["contains", "equal-to", "regex"].forEach(id => {
+    ["contains", "equal-to", "url-mask", "regex"].forEach(id => {
       const menuItem = this.doc.createXULElement("menuitem");
       menuItem.setAttribute("data-l10n-id", `zen-space-routing-${id}`);
       menuItem.setAttribute("value", id);
@@ -194,6 +206,28 @@ export class nsZenSpaceRoutingDialog {
     this.createOpenInList(openInMenulist, route.openIn);
 
     bottomRow.append(bottomLabelContainer, openInMenulist);
+    for (const [direction, offset] of [
+      ["up", -1],
+      ["down", 1],
+    ]) {
+      const button = this.doc.createXULElement("button");
+      button.className = `sr-move-${direction}`;
+      this.doc.l10n.setAttributes(
+        button,
+        `zen-space-routing-move-${direction}`
+      );
+      button.addEventListener("command", () => {
+        if (gZenSpaceRoutingManager.moveRoute(route.id, offset)) {
+          const roots = [...container.querySelectorAll(".sr-rule-container")];
+          for (const item of gZenSpaceRoutingManager.getAllRoutes()) {
+            container.appendChild(
+              roots.find(el => el.getAttribute("routeId") === item.id)
+            );
+          }
+        }
+      });
+      bottomRow.append(button);
+    }
 
     root.append(topRow, bottomRow);
 
@@ -307,6 +341,9 @@ export class nsZenSpaceRoutingDialog {
    */
   updateInputPlaceholder(matchType, input) {
     switch (matchType) {
+      case "url-mask":
+        input.placeholder = "github.com/Onigo/*";
+        break;
       case "regex":
         input.placeholder = "zen-browser\\.app";
         break;
@@ -401,6 +438,10 @@ export class nsZenSpaceRoutingDialog {
     const workspaces = this.openerWindow.gZenWorkspaces.getWorkspaces();
 
     createXulItem(mostRecentSpace.value, "most-recent-space");
+    createXulItem(
+      await this.doc.l10n.formatValue("zen-space-routing-first-space"),
+      "first-space"
+    );
     createXulItem("sep");
 
     workspaces.forEach(workspace => {
@@ -419,6 +460,7 @@ export class nsZenSpaceRoutingDialog {
    * Uninitializes the boost editor by cleaning up event listeners and observers.
    */
   uninit() {
+    this.aiSettings?.destroy();
     nsZenSpaceRoutingDialog.OBSERVERS.forEach(observe => {
       Services.obs.removeObserver(this, observe);
     });

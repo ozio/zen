@@ -38,6 +38,7 @@ function makeFakeWindow({
     gZenStartup: { isReady: ready },
     gZenWorkspaces: {
       workspaceEnabled,
+      getWorkspaces: () => workspaces,
       moveCalls: [],
       changeCalls: [],
       lastSelectedWorkspaceTabs: {},

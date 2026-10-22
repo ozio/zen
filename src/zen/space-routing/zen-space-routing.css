@@ -12,8 +12,8 @@
   --input-background-color: light-dark(#f1f2f4, #2c2d31);
   --hr-color: light-dark(#cdced4, #313235);
 
-  --sr-width: 510px;
-  --sr-height: 500px;
+  --sr-width: 720px;
+  --sr-height: 680px;
 
   --content-padding: 26px;
   --content-padding-vertical: 16px;
@@ -47,6 +47,7 @@ window {
 
   position: relative;
   display: flex;
+  flex-direction: column;
 }
 
 #sr-empty-content {
@@ -55,17 +56,12 @@ window {
   text-align: center;
   gap: 24px;
 
-  position: absolute;
-  left: 84px;
-  right: 84px;
-
-  bottom: 100px;
-  top: 100px;
+  padding: 12px 50px;
   justify-content: center;
 
   & image {
     aspect-ratio: 1;
-    height: 75px;
+    height: 40px;
 
     min-height: 0;
     max-height: none;
@@ -258,13 +254,97 @@ button {
 
 #sr-content {
   width: 100%;
-  overflow: scroll;
-  padding: 20px var(--content-padding);
-  flex-grow: 1;
+  padding: 12px 0;
 
   display: flex;
   flex-direction: column;
   gap: var(--rules-gap);
+}
+
+#sr-body {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+#sr-priority,
+#sr-ai,
+#sr-preview {
+  margin: 10px var(--content-padding);
+  font-size: 13px;
+  color: var(--text-color);
+}
+
+#sr-ai,
+#sr-preview {
+  border-top: 1px solid var(--hr-color);
+  padding-top: 16px;
+}
+
+#sr-ai html|summary {
+  cursor: pointer;
+  margin-block: 12px;
+}
+
+.sr-ai-toggle,
+.sr-ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sr-ai-field,
+#sr-ai-spaces html|label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-block: 10px;
+}
+
+#sr-ai html|input:not([type="checkbox"]),
+#sr-ai html|textarea,
+#sr-preview html|input {
+  box-sizing: border-box;
+  background-color: var(--input-background-color);
+  color: var(--text-color);
+  border: 1px solid var(--hr-color);
+  border-radius: 5px;
+  padding: 7px;
+  font: inherit;
+}
+
+#sr-ai html|textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+#sr-ai html|button,
+#sr-preview html|button,
+.sr-move-up,
+.sr-move-down {
+  border: 1px solid var(--hr-color);
+  border-radius: 5px;
+  padding: 5px 10px !important;
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.sr-ai-thresholds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block: 14px;
+}
+
+.sr-ai-thresholds html|label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+.sr-ai-thresholds html|input {
+  width: 110px;
 }
 
 .sr-label-container {

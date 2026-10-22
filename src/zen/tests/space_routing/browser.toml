@@ -9,6 +9,8 @@ support-files = [
 
 ["browser_space_routing_container.js"]
 
+["browser_space_routing_ai.js"]
+
 ["browser_space_routing_crud.js"]
 
 ["browser_space_routing_dialog.js"]

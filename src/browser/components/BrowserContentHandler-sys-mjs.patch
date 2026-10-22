@@ -1,8 +1,7 @@
 diff --git a/browser/components/BrowserContentHandler.sys.mjs b/browser/components/BrowserContentHandler.sys.mjs
-index f4a0e1e566c363d5eb1d77e0c021df250d96b3f3..2cd8c4b383723372a648a4511bed2c6e94a81c28 100644
 --- a/browser/components/BrowserContentHandler.sys.mjs
 +++ b/browser/components/BrowserContentHandler.sys.mjs
-@@ -27,6 +27,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
+@@ -27,6 +27,8 @@
    ShellService: "moz-src:///browser/components/shell/ShellService.sys.mjs",
    SpecialMessageActions:
      "resource://messaging-system/lib/SpecialMessageActions.sys.mjs",
@@ -11,7 +10,7 @@ index f4a0e1e566c363d5eb1d77e0c021df250d96b3f3..2cd8c4b383723372a648a4511bed2c6e
  });
  
  /**
-@@ -672,6 +674,28 @@ nsBrowserContentHandler.prototype = {
+@@ -672,6 +674,28 @@
        }
      }
  
@@ -40,7 +39,7 @@ index f4a0e1e566c363d5eb1d77e0c021df250d96b3f3..2cd8c4b383723372a648a4511bed2c6e
      var searchParam = cmdLine.handleFlagWithParam("search", false);
      if (searchParam) {
        doSearch(searchParam, cmdLine);
-@@ -742,6 +766,7 @@ nsBrowserContentHandler.prototype = {
+@@ -742,6 +766,7 @@
        "  --new-tab <url>    Open <url> in a new tab.\n" +
        "  --data <data-URL>  Open a data: URL.\n" +
        "  --private-window [<url>] Open <url> in a new private window.\n";
@@ -48,9 +47,35 @@ index f4a0e1e566c363d5eb1d77e0c021df250d96b3f3..2cd8c4b383723372a648a4511bed2c6e
      if (AppConstants.platform == "win") {
        info += "  --preferences      Open Options dialog.\n";
      } else {
-@@ -1330,7 +1355,9 @@ function handURIToExistingBrowser(
+@@ -1308,11 +1333,11 @@
+     return;
+   }
+ 
+-  let openInWindow = ({ browserDOMWindow }) => {
++  let openInWindow = ({ browserDOMWindow }, routed = false) => {
+     browserDOMWindow.openURI(
+       uri,
+       null,
+-      location,
++      routed ? Ci.nsIBrowserDOMWindow.OPEN_NEWTAB : location,
+       Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL |
+         (forceAllowDataURI
+           ? Ci.nsIBrowserDOMWindow.OPEN_FORCE_ALLOW_DATA_URI
+@@ -1329,8 +1354,21 @@
+     private: allowPrivate,
    });
  
++  // Resolve external web links before their first network load. The native
++  // command-line handler stays synchronous; the router owns the continuation.
++  if (!allowPrivate && (uri.schemeIs("https") || uri.schemeIs("http"))) {
++    const readyWindow = navWin ||
++      lazy.BrowserWindowTracker.getPendingWindow({ private: false }) ||
++      openBrowserWindow(cmdLine, triggeringPrincipal, "about:blank");
++    lazy.gZenSpaceRoutingManager.openExternalURI(uri, readyWindow, openInWindow)
++      .catch(() => console.error("[ZenSpaceRouting] External link opening failed"));
++    return;
++  }
++
    if (navWin) {
 -    openInWindow(navWin);
 +    openInWindow(
@@ -59,3 +84,20 @@ index f4a0e1e566c363d5eb1d77e0c021df250d96b3f3..2cd8c4b383723372a648a4511bed2c6e
      return;
    }
  
+@@ -1737,6 +1775,16 @@
+     }
+ 
+     if (urilist.length) {
++      // Cold launches and batches use the same routing path as running Zen.
++      if (urilist.some(uri => uri.schemeIs("https") || uri.schemeIs("http"))) {
++        for (let i = 0; i < urilist.length; i++) {
++          handURIToExistingBrowser(
++            urilist[i], Ci.nsIBrowserDOMWindow.OPEN_DEFAULTWINDOW, cmdLine,
++            false, principalList[i] ?? lazy.gSystemPrincipal
++          );
++        }
++        return;
++      }
+       if (
+         cmdLine.state != Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
+         urilist.length == 1
