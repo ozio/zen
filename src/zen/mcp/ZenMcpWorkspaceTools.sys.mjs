@@ -2270,6 +2270,34 @@ export class ZenMcpWorkspaceTools {
     );
   }
 
+  restoreTabLayout(win, tab, item, groups) {
+    const mode = pinMode(item.pinned, item.essential);
+    if (pinMode(tab.pinned, tab.hasAttribute("zen-essential")) !== mode) {
+      this.browser.setPinMode(win, tab, mode);
+    }
+    if (!item.essential && this.descriptor(tab).spaceId !== item.spaceId) {
+      win.gZenWorkspaces.moveTabToWorkspace(tab, item.spaceId);
+    }
+    if (item.groupId && groups.get(item.groupId)) {
+      const group = groups.get(item.groupId);
+      if (tab.group !== group) {
+        group.addTabs([tab]);
+      }
+    } else if (!item.groupId && tab.group) {
+      win.gBrowser.ungroupTab(tab);
+    }
+    if ((tab.zenStaticLabel ?? "") !== (item.customTitle ?? "")) {
+      this.rename(tab, item.customTitle ?? "");
+    }
+    if (
+      item.pinnedInitialState &&
+      JSON.stringify(tab._zenPinnedInitialState ?? null) !==
+        JSON.stringify(item.pinnedInitialState)
+    ) {
+      this.setPinnedState(tab, item.pinnedInitialState);
+    }
+  }
+
   async restoreLayout(
     layouts,
     idMap,
@@ -2303,7 +2331,10 @@ export class ZenMcpWorkspaceTools {
               "recovery_conflict",
               "An original folder changed placement after closing; recovery will not relocate it"
             );
-          } else {
+          } else if (
+            group.getAttribute("zen-workspace-id") !== definition.spaceId ||
+            (group.group?.id ?? null) !== definition.parentGroupId
+          ) {
             if (definition.kind === "folder") {
               win.gZenFolders.changeFolderToSpace(group, definition.spaceId, {
                 hasDndSwitch: true,
@@ -2387,19 +2418,7 @@ export class ZenMcpWorkspaceTools {
           );
           idMap.set(item.tabId, this.service.tabId(tab));
         }
-        this.browser.setPinMode(win, tab, pinMode(item.pinned, item.essential));
-        if (!item.essential) {
-          win.gZenWorkspaces.moveTabToWorkspace(tab, item.spaceId);
-        }
-        if (item.groupId && groups.get(item.groupId)) {
-          groups.get(item.groupId).addTabs([tab]);
-        } else if (!item.groupId && tab.group) {
-          win.gBrowser.ungroupTab(tab);
-        }
-        this.rename(tab, item.customTitle ?? "");
-        if (item.pinnedInitialState) {
-          this.setPinnedState(tab, item.pinnedInitialState);
-        }
+        this.restoreTabLayout(win, tab, item, groups);
         native.push({ tab, original: item });
       }
       for (const definition of layout.groups.filter(

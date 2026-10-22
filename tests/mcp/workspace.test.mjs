@@ -1643,3 +1643,65 @@ test("new native live-folder tabs inherit effective Space membership before mate
   assert.equal(result.items[0].spaceId, "research");
   assert.equal(tab.hasAttribute("zen-workspace-id"), false);
 });
+
+test("Undo of an unrelated move does not reparent or repopulate an already correct nested folder", async () => {
+  const e = environment();
+  const a = e.add("https://a.test/");
+  const b = e.add("https://b.test/");
+  const child = e.createGroup(e.win, "untouched-child", [a, b]);
+  const root = e.createGroup(e.win, "untouched-root", []);
+  e.browser.nestFolder(e.win, child, root);
+  const tab = e.add("https://moved.test/");
+  const moved = await e.planApply({
+    action: "move",
+    tabIds: [tab.mcpId],
+    spaceId: "research",
+  });
+  e.win.gZenFolders.changeFolderToSpace = () => {
+    throw new Error("Unchanged folder was relocated");
+  };
+  child.addTabs = () => {
+    throw new Error("Unchanged folder was repopulated");
+  };
+  const nativeMove = e.win.gZenWorkspaces.moveTabToWorkspace;
+  e.win.gZenWorkspaces.moveTabToWorkspace = (item, space) => {
+    assert.equal(item, tab, "Unrelated pinned tab was moved");
+    return nativeMove(item, space);
+  };
+  const undone = await e.execute("zen_tabs_undo", {
+    operationId: moved.operationId,
+  });
+  assert.equal(undone.undone, true);
+  assert.equal(child.group, root);
+  assert.deepEqual(child.tabs, [a, b]);
+  assert.equal(tab.getAttribute("zen-workspace-id"), "work");
+});
+
+test("Undo of a pin rename does not extract and re-add existing folder members", async () => {
+  const e = environment();
+  const a = e.add("https://a.test/");
+  const b = e.add("https://b.test/");
+  const folder = e.createGroup(e.win, "stable-pins", [a, b]);
+  const renamed = await e.execute("zen_pins", {
+    windowId: e.win.id,
+    action: "rename",
+    tabIds: [a.mcpId, b.mcpId],
+    title: "Temporary title",
+  });
+  folder.addTabs = () => {
+    throw new Error("Existing folder members were re-added");
+  };
+  e.win.gZenFolders.changeFolderToSpace = () => {
+    throw new Error("Existing folder was relocated");
+  };
+  e.win.gZenWorkspaces.moveTabToWorkspace = () => {
+    throw new Error("Existing folder tab was extracted");
+  };
+  const undone = await e.execute("zen_tabs_undo", {
+    operationId: renamed.operationId,
+  });
+  assert.equal(undone.undone, true);
+  assert.deepEqual(folder.tabs, [a, b]);
+  assert.equal(a.zenStaticLabel, undefined);
+  assert.equal(b.zenStaticLabel, undefined);
+});
