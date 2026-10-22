@@ -1626,3 +1626,20 @@ test("independent-window pins support replace, explicit saved URL and Undo witho
   await e.execute("zen_tabs_undo", { operationId: replace.operationId });
   assert.equal(tab._zenPinnedInitialState.entry.url, "https://saved.test/");
 });
+
+test("new native live-folder tabs inherit effective Space membership before materialization", async () => {
+  const e = environment();
+  const tab = e.add("https://feed.test/new", { pinned: true });
+  const folder = e.createGroup(e.win, "live-feed", [tab], {
+    spaceId: "research",
+  });
+  tab.removeAttribute("zen-workspace-id");
+  const result = await e.execute("zen_tabs_query", {
+    windowId: e.win.id,
+    filter: { spaceId: "research", folderId: folder.id },
+  });
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].tabId, tab.mcpId);
+  assert.equal(result.items[0].spaceId, "research");
+  assert.equal(tab.hasAttribute("zen-workspace-id"), false);
+});

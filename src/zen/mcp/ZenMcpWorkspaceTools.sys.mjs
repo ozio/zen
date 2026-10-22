@@ -483,6 +483,9 @@ export class ZenMcpWorkspaceTools {
     const folderPath = [];
     let group = tab.group;
     while (group) {
+      // Native live folders can create lazy tabs before their Space attribute
+      // is materialized. Their enclosing group already defines membership.
+      state.spaceId ||= group.getAttribute("zen-workspace-id") || null;
       if (group.isZenFolder) {
         folderPath.unshift({ groupId: group.id, title: group.label ?? "" });
       }
