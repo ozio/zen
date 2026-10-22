@@ -242,6 +242,13 @@ index 282fdbdf2ec30ac3ce7c508b8769e5c555f67ea7..2b2f2c9fa6fe2ac17b8b00422c5d921f
    }
  
    /**
+@@ -548,5 +629,5 @@ export class MozTabbrowserTabGroup extends MozXULElement {
+   get tabsAndSplitViews() {
+-    return Array.from(this.children).filter(
++    return Array.from(this.groupContainer?.children ?? []).filter(
+       node => node.matches("tab") || node.tagName == "tab-split-view-wrapper"
+     );
+   }
 @@ -659,9 +740,6 @@ export class MozTabbrowserTabGroup extends MozXULElement {
          });
        } else {
