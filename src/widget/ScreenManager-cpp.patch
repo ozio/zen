@@ -1,0 +1,19 @@
+diff --git a/widget/ScreenManager.cpp b/widget/ScreenManager.cpp
+--- a/widget/ScreenManager.cpp
++++ b/widget/ScreenManager.cpp
+@@ -235,6 +235,15 @@
+   return NS_OK;
+ }
+
++NS_IMETHODIMP
++ScreenManager::GetScreens(nsTArray<RefPtr<nsIScreen>>& aScreens) {
++  aScreens.Clear();
++  for (const auto& screen : mScreenList) {
++    aScreens.AppendElement(screen);
++  }
++  return NS_OK;
++}
++
+ NS_IMETHODIMP
+ ScreenManager::GetTotalScreenPixels(int64_t* aTotalScreenPixels) {
+   MOZ_ASSERT(aTotalScreenPixels);

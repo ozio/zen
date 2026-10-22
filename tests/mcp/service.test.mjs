@@ -5,12 +5,12 @@ import { randomBytes, createHash, randomUUID } from "node:crypto";
 
 let source = await fs.readFile(
   new URL("../../src/zen/mcp/ZenMcpService.sys.mjs", import.meta.url),
-  "utf8",
+  "utf8"
 );
 source = source.replaceAll(
   /from "(\.\/[^"\n]+)"/g,
   (_, relative) =>
-    `from "${new URL(`../../src/zen/mcp/${relative.slice(2)}`, import.meta.url).href}"`,
+    `from "${new URL(`../../src/zen/mcp/${relative.slice(2)}`, import.meta.url).href}"`
 );
 
 async function fixture() {
@@ -34,6 +34,10 @@ async function fixture() {
       this.cleaned.push(id);
     }
     pruneBrowserContexts() {}
+    async init() {}
+    attachWindow() {}
+    detachWindow() {}
+    onBrowserEvent() {}
     destroy() {
       this.destroyed = true;
     }
@@ -82,7 +86,7 @@ async function fixture() {
       addObserver() {},
       notifyObservers: (subject, topic, data) => events.push({ topic, data }),
     },
-    tm: { dispatchToMainThread: (fn) => queueMicrotask(fn) },
+    tm: { dispatchToMainThread: fn => queueMicrotask(fn) },
     wm: { getEnumerator: () => windows },
     appinfo: {
       version: "test",
@@ -98,8 +102,8 @@ async function fixture() {
     join: (...parts) => parts.join("/"),
   };
   globalThis.IOUtils = {
-    exists: async (path) => files.has(path),
-    readJSON: async (path) => structuredClone(files.get(path)),
+    exists: async path => files.has(path),
+    readJSON: async path => structuredClone(files.get(path)),
     writeJSON: async (path, value) => {
       files.set(path, structuredClone(value));
     },
@@ -115,7 +119,7 @@ async function fixture() {
     },
     setPermissions: async () => {},
     stat: async () => ({ size: 0 }),
-    remove: async (path) => files.delete(path),
+    remove: async path => files.delete(path),
   };
   globalThis.ChromeUtils = {
     generateQI: () =>
@@ -126,10 +130,14 @@ async function fixture() {
       Object.assign(target, {
         HttpServer,
         PrivateBrowsingUtils: {
-          isWindowPrivate: (win) => win.private === true,
+          isWindowPrivate: win => win.private === true,
         },
         ZenMcpBrowserTools: Provider,
         ZenMcpPageTools: Provider,
+        ZenMcpWorkspaceTools: Provider,
+        ZenMcpMediaTools: Provider,
+        ZenMcpSiteTools: Provider,
+        ZenMcpSidebarTools: Provider,
       });
     },
   };
@@ -141,7 +149,7 @@ async function fixture() {
   globalThis.Cc = {
     "@mozilla.org/security/random-generator;1": {
       getService: () => ({
-        generateRandomBytes: (count) => [...randomBytes(count)],
+        generateRandomBytes: count => [...randomBytes(count)],
       }),
     },
     "@mozilla.org/security/hash;1": {
@@ -171,7 +179,7 @@ async function fixture() {
     events,
     instances,
     windows,
-    setOccupied: (value) => {
+    setOccupied: value => {
       occupied = value;
     },
   };
@@ -198,14 +206,14 @@ test("Playground is profile-scoped and starts only on numeric loopback with its 
   assert.equal(state.service.server.port, 3924);
   assert.deepEqual(
     [...state.service.server.authorities],
-    ["http://127.0.0.1:3924"],
+    ["http://127.0.0.1:3924"]
   );
   const registry = await state.service.addClient("Synthetic test");
   assert.equal(registry.endpoint, "http://127.0.0.1:3924/mcp");
   assert.ok(
     !JSON.stringify(
-      state.files.get("/synthetic/profile/zen-mcp-clients.json"),
-    ).includes(registry.token),
+      state.files.get("/synthetic/profile/zen-mcp-clients.json")
+    ).includes(registry.token)
   );
   await state.service.stop();
 });
@@ -224,7 +232,7 @@ test("occupied port is reported and changing the port recovers the service witho
   assert.equal(state.service.server.port, 5001);
   assert.equal(
     state.service.credentials.authenticate(`Bearer ${grant.token}`).id,
-    grant.client.id,
+    grant.client.id
   );
   await state.service.setPort(0);
   assert.equal(state.service.port, 3923);
@@ -245,13 +253,13 @@ test("each restart invalidates instance/target IDs, retains grants and closes co
   assert.ok(state.service.credentials.authenticate(`Bearer ${grant.token}`));
   assert.throws(
     () => state.service.assertInstance({ instanceId: first }),
-    (error) => error.code === "stale_instance",
+    error => error.code === "stale_instance"
   );
   await state.service.revokeClient(grant.client.id);
   assert.ok(state.service.pageTools.cleaned.includes(grant.client.id));
   assert.equal(
     state.service.credentials.authenticate(`Bearer ${grant.token}`),
-    null,
+    null
   );
   await state.service.stop();
 });
@@ -267,7 +275,7 @@ test("window enumeration excludes private and unready windows and preserves inac
   state.windows.push(
     win,
     { ...win, private: true },
-    { ...win, gZenStartup: { isReady: false } },
+    { ...win, gZenStartup: { isReady: false } }
   );
   assert.deepEqual(state.service.getWindows(), [win]);
   assert.deepEqual(state.service.listTabs(win), [
@@ -290,7 +298,7 @@ test("audit and change resources never persist page contents, argument values, s
       text: "SECRET PAGE",
     },
     "ok",
-    Date.now(),
+    Date.now()
   );
   await state.service.flushAudit();
   const audit = state.files.get("/synthetic/profile/zen-mcp-audit.jsonl");

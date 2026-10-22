@@ -10,15 +10,22 @@ EXTRA_JS_MODULES.zen.mcp += [
     "ZenMcpCredentials.sys.mjs",
     "ZenMcpDataTools.sys.mjs",
     "ZenMcpDevTools.sys.mjs",
+    "ZenMcpLambdaWorker.js",
+    "ZenMcpMediaTools.sys.mjs",
     "ZenMcpPageTools.sys.mjs",
     "ZenMcpProtocol.sys.mjs",
     "ZenMcpService.sys.mjs",
+    "ZenMcpSidebarTools.sys.mjs",
+    "ZenMcpSiteTools.sys.mjs",
+    "ZenMcpTabQuery.sys.mjs",
     "ZenMcpUtils.sys.mjs",
+    "ZenMcpWorkspaceTools.sys.mjs",
 ]
 
 FINAL_TARGET_FILES.actors += [
     "actors/ZenMcpActionability.sys.mjs",
     "actors/ZenMcpChild.sys.mjs",
     "actors/ZenMcpInteraction.sys.mjs",
+    "actors/ZenMcpMediaChild.sys.mjs",
     "actors/ZenMcpParent.sys.mjs",
 ]

@@ -31,6 +31,18 @@ let JSWINDOWACTORS = {
     safeForUntrustedWebProcess: true,
     enablePreference: "zen.mcp.enabled",
   },
+  ZenMcpMedia: {
+    parent: {
+      esModuleURI: "resource:///actors/ZenMcpParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "resource:///actors/ZenMcpMediaChild.sys.mjs",
+    },
+    allFrames: true,
+    includeChrome: false,
+    safeForUntrustedWebProcess: true,
+    enablePreference: "zen.mcp.enabled",
+  },
   ZenModsMarketplace: {
     parent: {
       esModuleURI: "resource:///actors/ZenModsMarketplaceParent.sys.mjs",

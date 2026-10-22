@@ -1,0 +1,23 @@
+diff --git a/widget/nsIScreenManager.idl b/widget/nsIScreenManager.idl
+--- a/widget/nsIScreenManager.idl
++++ b/widget/nsIScreenManager.idl
+@@ -10,7 +10,7 @@
+ #include "nsCOMPtr.h"
+ %}
+
+-[scriptable, uuid(e8a96e60-6b61-4a14-bacc-53891604b502)]
++[scriptable, uuid(f76ee51d-5ef8-44e3-85ed-452a1a63aa42)]
+ interface nsIScreenManager : nsISupports
+ {
+   // Returns the screen that contains the rectangle. If the rect overlaps
+@@ -31,6 +31,10 @@
+   // The screen with the menubar/taskbar. This shouldn't be needed very often.
+   readonly attribute nsIScreen primaryScreen;
+
++  // A snapshot of the connected screens. Entries/ordering may change when the
++  // display topology changes; consumers must not treat them as hardware IDs.
++  readonly attribute Array<nsIScreen> screens;
++
+   // The total number of pixels across all monitors.
+   readonly attribute int64_t totalScreenPixels;
+ };

@@ -20,6 +20,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   ZenMcpBrowserTools: "resource:///modules/zen/mcp/ZenMcpBrowserTools.sys.mjs",
   ZenMcpPageTools: "resource:///modules/zen/mcp/ZenMcpPageTools.sys.mjs",
+  ZenMcpWorkspaceTools:
+    "resource:///modules/zen/mcp/ZenMcpWorkspaceTools.sys.mjs",
+  ZenMcpMediaTools: "resource:///modules/zen/mcp/ZenMcpMediaTools.sys.mjs",
+  ZenMcpSiteTools: "resource:///modules/zen/mcp/ZenMcpSiteTools.sys.mjs",
+  ZenMcpSidebarTools: "resource:///modules/zen/mcp/ZenMcpSidebarTools.sys.mjs",
   createAgentSetup: "resource:///modules/zen/mcp/ZenMcpAgentSetup.sys.mjs",
 });
 const MAX_BODY = 4 * 1024 * 1024;
@@ -404,12 +409,24 @@ class ZenMcpServiceImpl {
       this.sequence = 0;
       this.browserTools = new lazy.ZenMcpBrowserTools(this);
       this.pageTools = new lazy.ZenMcpPageTools(this);
+      this.workspaceTools = new lazy.ZenMcpWorkspaceTools(this);
+      this.mediaTools = new lazy.ZenMcpMediaTools(this);
+      this.siteTools = new lazy.ZenMcpSiteTools(this);
+      this.sidebarTools = new lazy.ZenMcpSidebarTools(this);
+      this.providers = [
+        this.browserTools,
+        this.pageTools,
+        this.workspaceTools,
+        this.mediaTools,
+        this.siteTools,
+        this.sidebarTools,
+      ];
+      await this.sidebarTools.init();
       this.toolList = [
         ...this.rootTools,
-        ...this.browserTools
-          .getTools()
+        ...this.providers
+          .flatMap(provider => provider.getTools())
           .filter(tool => tool.name !== "zen_browser_state"),
-        ...this.pageTools.getTools(),
       ];
       this.protocol = new ZenMcpProtocol(this, { id: uuid });
       const server = new lazy.HttpServer();
@@ -437,9 +454,8 @@ class ZenMcpServiceImpl {
       } catch {
         this.error = `MCP could not listen on 127.0.0.1:${port}. The port may be occupied; choose another port.`;
         this.protocol.destroy();
-        await this.browserTools.destroy();
-        await this.pageTools.destroy();
-        this.protocol = this.browserTools = this.pageTools = null;
+        await this.destroyProviders();
+        this.protocol = null;
         this.toolList = null;
       }
       this.changed("server:state");
@@ -466,15 +482,39 @@ class ZenMcpServiceImpl {
       remove();
     }
     this.windowListeners.clear();
-    await this.browserTools?.destroy();
-    await this.pageTools?.destroy();
-    this.protocol = this.browserTools = this.pageTools = null;
+    await this.destroyProviders();
+    this.protocol = null;
     this.toolList = null;
     const server = this.server;
     this.server = null;
     if (server) {
       await new Promise(resolve => server.stop(resolve));
     }
+  }
+
+  async destroyProviders() {
+    for (const provider of [...(this.providers ?? [])].reverse()) {
+      await provider.destroy();
+    }
+    this.providers = [];
+    this.browserTools =
+      this.pageTools =
+      this.workspaceTools =
+      this.mediaTools =
+      this.siteTools =
+      this.sidebarTools =
+        null;
+  }
+
+  enqueueMutation(operation) {
+    if (!this.protocol) {
+      return Promise.reject(
+        new McpToolError("server_stopped", "MCP is stopped")
+      );
+    }
+    const result = this.protocol.mutations.then(operation, operation);
+    this.protocol.mutations = result.catch(() => {});
+    return result;
   }
 
   getWindows() {
@@ -607,7 +647,10 @@ class ZenMcpServiceImpl {
     };
     types.forEach(type => win.addEventListener(type, listener, true));
     const progress = {
-      onLocationChange: browser => {
+      onLocationChange: (browser, webProgress) => {
+        if (webProgress && !webProgress.isTopLevel) {
+          return;
+        }
         const tab = win.gBrowser.getTabForBrowser(browser);
         if (tab && !tab.closing) {
           const context = browser.browsingContext;
@@ -618,6 +661,7 @@ class ZenMcpServiceImpl {
             documentId: context?.currentWindowGlobal
               ? String(context.currentWindowGlobal.innerWindowId)
               : undefined,
+            event: "LocationChange",
           });
         }
       },
@@ -636,7 +680,9 @@ class ZenMcpServiceImpl {
       types.forEach(type => win.removeEventListener(type, listener, true));
       win.removeEventListener("unload", unload);
       win.gBrowser.removeTabsProgressListener?.(progress);
+      this.sidebarTools?.detachWindow(win);
     });
+    this.sidebarTools?.attachWindow(win);
     this.notify("browser", {
       windowId: this.windowId(win),
       event: "window-ready",
@@ -644,6 +690,9 @@ class ZenMcpServiceImpl {
   }
 
   notify(kind, payload = {}) {
+    if (kind === "browser") {
+      this.sidebarTools?.onBrowserEvent(payload);
+    }
     // Event data is deliberately restricted even if a provider passes more.
     const target = {};
     for (const key of [
@@ -796,25 +845,29 @@ class ZenMcpServiceImpl {
       this.protocol.disconnect(client.id);
       return { instanceId: this.instanceId, disconnected: true };
     }
-    const provider = this.browserTools
-      .getTools()
-      .some(tool => tool.name === name)
-      ? this.browserTools
-      : this.pageTools;
+    const provider = this.providers?.find(item =>
+      item.getTools().some(tool => tool.name === name)
+    );
+    if (!provider) {
+      throw new McpToolError(
+        "unknown_tool",
+        "Tool is unavailable in this build"
+      );
+    }
     return provider.execute(name, args, client, signal);
   }
 
   cleanup(clientId) {
     this.clientActivity.delete(clientId);
-    return Promise.all([
-      this.browserTools?.cleanup(clientId),
-      this.pageTools?.cleanup(clientId),
-    ]).catch(() => {});
+    return Promise.all(
+      (this.providers ?? []).map(provider => provider.cleanup(clientId))
+    ).catch(() => {});
   }
 
   maintenance() {
     this.protocol?.pruneSessions();
     this.pageTools?.pruneBrowserContexts();
+    this.workspaceTools?.prune();
     for (const transport of [...this.transports]) {
       if (transport.response._connection._closed || transport.response._ended) {
         this.transports.delete(transport);
@@ -836,7 +889,11 @@ class ZenMcpServiceImpl {
         Date.now() - lastUsed > 30000 &&
         ![...this.transports].some(item => item.client.id === clientId)
       ) {
-        this.cleanup(clientId);
+        // Short-lived page handles and observers expire when idle; operation
+        // receipts/Undo belong to their provider's longer bounded lifetime.
+        this.clientActivity.delete(clientId);
+        this.browserTools?.cleanup(clientId);
+        this.pageTools?.cleanup(clientId);
       }
     }
     this.flushAudit();

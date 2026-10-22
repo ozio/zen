@@ -12,3 +12,5 @@ export class ZenMcpParent extends JSWindowActorParent {
     throw new Error("ZenMcp does not accept child-initiated parent commands");
   }
 }
+
+export class ZenMcpMediaParent extends ZenMcpParent {}
