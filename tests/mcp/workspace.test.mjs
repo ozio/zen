@@ -882,6 +882,25 @@ test("previews are read-only, stale plans reject, applies are idempotent and foc
   assert.ok(e.service.listTabs(e.win).includes(second));
 });
 
+test("completed effects retain their receipt when restoring focus fails", async () => {
+  const e = environment();
+  e.add("https://z.test", { title: "Z" });
+  e.add("https://a.test", { title: "A" });
+  e.provider.restoreFocus = async () => {
+    throw Object.assign(new Error("Window changed during focus restore"), {
+      code: "focus_unavailable",
+    });
+  };
+  const result = await e.planApply({ action: "sort", sort: { by: "title" } });
+  assert.equal(result.summary.sorted, 2);
+  assert.equal(result.focusError.code, "focus_unavailable");
+  assert.ok(result.operationId);
+  assert.deepEqual(
+    e.service.listTabs(e.win).map(tab => tab.label),
+    ["A", "Z"]
+  );
+});
+
 test("sort replaces only selected sibling slots; exact manual order rejects cross-tree ambiguity", async () => {
   const e = environment();
   const a = e.add("https://example.test/a", { title: "C" });

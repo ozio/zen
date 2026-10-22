@@ -1436,6 +1436,7 @@ export class ZenMcpWorkspaceTools {
       undoable: operation.undoable && !operation.undone,
       running: !!operation.running,
       ...(operation.error ? { error: operation.error } : {}),
+      ...(operation.focusError ? { focusError: operation.focusError } : {}),
       expiresAt: operation.expiresAt,
     };
   }
