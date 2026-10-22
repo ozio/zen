@@ -947,6 +947,46 @@ test("folder/subtree sort keeps group units intact and sorts nested children", a
   assert.deepEqual(root.allItems, [c, child]);
 });
 
+test("folder and subtree sorts honor an empty or partial shared selection", async () => {
+  const e = environment();
+  const a = e.add("https://z.test", { title: "Z" });
+  const excluded = e.add("https://keep.test", { title: "0 excluded" });
+  const b = e.add("https://a.test", { title: "A" });
+  const root = e.createGroup(e.win, "root", []);
+  const child = e.createGroup(e.win, "child", [a, excluded, b]);
+  root.groupContainer.appendChild(child);
+  await e.planApply({
+    action: "sort",
+    scope: "folder",
+    folderId: child.id,
+    tabIds: [],
+    sort: { by: "title" },
+  });
+  assert.deepEqual(
+    child.allItems.map(item => item.id),
+    [a.id, excluded.id, b.id]
+  );
+  for (const scope of ["folder", "subtree"]) {
+    const sorted = await e.planApply({
+      action: "sort",
+      scope,
+      folderId: scope === "folder" ? child.id : root.id,
+      tabIds: [a.mcpId, b.mcpId],
+      sort: { by: "title" },
+    });
+    assert.deepEqual(
+      child.allItems.map(item => item.id),
+      [b.id, excluded.id, a.id]
+    );
+    assert.equal(child.group, root);
+    await e.execute("zen_tabs_undo", { operationId: sorted.operationId });
+    assert.deepEqual(
+      child.allItems.map(item => item.id),
+      [a.id, excluded.id, b.id]
+    );
+  }
+});
+
 test("batch manual destinations, anchors, nested pin folders and undo preserve tree", async () => {
   const e = environment();
   const a = e.add("https://a.test");
@@ -1048,6 +1088,32 @@ test("whole folder move within a window restores its original Space, parent and 
     root,
     sibling,
   ]);
+});
+
+test("explicit nested folders move without absorbing their enclosing folder", async () => {
+  const e = environment();
+  const tab = e.add("https://child.test");
+  const outer = e.createGroup(e.win, "outer", []);
+  const inner = e.createGroup(e.win, "inner", [tab]);
+  outer.groupContainer.appendChild(inner);
+  const plan = await e.execute("zen_tabs_plan", {
+    windowId: e.win.id,
+    action: "move",
+    groupIds: [inner.id],
+    spaceId: "research",
+  });
+  assert.deepEqual(plan.preview.moves[0].units, [
+    { id: inner.id, group: true },
+  ]);
+  const moved = await e.execute("zen_tabs_apply", { planId: plan.planId });
+  assert.equal(inner.getAttribute("zen-workspace-id"), "research");
+  assert.equal(outer.getAttribute("zen-workspace-id"), "work");
+  await e.execute("zen_tabs_undo", { operationId: moved.operationId });
+  assert.equal(inner.group, outer);
+  assert.equal(tab.group, inner);
+  const empty = e.createGroup(e.win, "empty-child", []);
+  inner.groupContainer.appendChild(empty);
+  assert.deepEqual(e.provider.units([], [inner, empty]), [inner]);
 });
 
 test("batch close retains complete SessionStore history independently of native closed-tab retention", async () => {

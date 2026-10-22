@@ -81,7 +81,10 @@ the returned preview, then `zen_tabs_apply`. Existing task authorization covers
 the requested action; preview is for checking targets, not an extra permission
 round. `order` specifies an exact sibling permutation; `placements` distributes
 explicit tabs/groups among several destinations. Prefer before/after IDs to
-shifting numeric indexes. Folder/subtree sort scopes also order folder units.
+shifting numeric indexes. Folder/subtree sort scopes also order folder units,
+while preserving elements excluded by an explicit selection. An empty selection
+does nothing. Select a folder by group ID to move that folder without pulling
+its enclosing folder along.
 For custom rules, `filterLambda` returns a boolean and `sortKeyLambda` returns a
 scalar or scalar tuple from plain tab descriptors. Neither can access pages or
 browser APIs; evaluation has a short worker time limit.

@@ -726,8 +726,12 @@ export class ZenMcpWorkspaceTools {
     // Complete native groups travel as one unit; a partial Split View never can.
     const selected = new Set(tabs);
     const explicit = new Set(groups);
+    const enclosing = new Set();
     for (const group of groups) {
       this.groupTabs(group).forEach(tab => selected.add(tab));
+      for (let parent = group.group; parent; parent = parent.group) {
+        enclosing.add(parent);
+      }
     }
     const units = [];
     for (const tab of selected) {
@@ -736,7 +740,9 @@ export class ZenMcpWorkspaceTools {
         const members = this.groupTabs(group);
         if (
           explicit.has(group) ||
-          (members.length && members.every(member => selected.has(member)))
+          (!enclosing.has(group) &&
+            members.length &&
+            members.every(member => selected.has(member)))
         ) {
           item = group;
         } else if (group.hasAttribute("split-view-group")) {
@@ -755,7 +761,17 @@ export class ZenMcpWorkspaceTools {
         units.push(group);
       }
     }
-    return units;
+    // Explicit child folders must not pull their parent along merely because
+    // they contain its last tabs. Conversely, a selected ancestor already owns
+    // its selected descendants, including empty folders with no member tabs.
+    return units.filter(item => {
+      for (let parent = item.group; parent; parent = parent.group) {
+        if (units.includes(parent)) {
+          return false;
+        }
+      }
+      return true;
+    });
   }
 
   validatePlacement(args, units, source) {
@@ -885,6 +901,44 @@ export class ZenMcpWorkspaceTools {
     };
   }
 
+  sortSelection(args, tabs, win) {
+    const explicit = [
+      "tabIds",
+      "selectionId",
+      "filter",
+      "filterLambda",
+      "groupIds",
+    ].some(key => args[key] !== undefined);
+    if (!explicit) {
+      return () => true;
+    }
+    const selected = new Set(tabs);
+    const groups = new Set(
+      (args.groupIds ?? []).map(id => this.group(win, id))
+    );
+    return item => {
+      for (let ancestor = item; ancestor; ancestor = ancestor.group) {
+        if (groups.has(ancestor)) {
+          return true;
+        }
+      }
+      if (!item.tabs) {
+        return selected.has(item);
+      }
+      const members = this.groupTabs(item);
+      const complete =
+        !!members.length && members.every(tab => selected.has(tab));
+      requireValue(
+        !item.hasAttribute("split-view-group") ||
+          complete ||
+          !members.some(tab => selected.has(tab)),
+        "split_boundary",
+        "Select the entire Split View to sort it as one unit"
+      );
+      return complete;
+    };
+  }
+
   async sortGroups(args, tabs, signal) {
     const win = this.browser.window(args.windowId);
     const buckets = new Map();
@@ -909,8 +963,9 @@ export class ZenMcpWorkspaceTools {
         "folder/subtree sorting needs folderId"
       );
       const root = this.browser.group(args.folderId, win, "folder");
+      const selected = this.sortSelection(args, tabs, win);
       const visit = folder => {
-        add(folder.allItems);
+        add(folder.allItems.filter(selected));
         if (args.scope === "subtree") {
           for (const item of folder.allItems) {
             if (item.isZenFolder) {
