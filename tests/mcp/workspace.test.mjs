@@ -371,6 +371,9 @@ function environment(options = {}) {
       },
       adoptTabGroup(group) {
         const tabs = group.tabs.map(tab => this.adoptTab(tab, {}));
+        group.remove();
+        const sourceGroups = group.ownerGlobal.groups;
+        sourceGroups.splice(sourceGroups.indexOf(group), 1);
         return createGroup(win, group.id, tabs, {
           folder: false,
           split: group.hasAttribute("split-view-group"),
@@ -1230,6 +1233,46 @@ test("cross-window folder receipts wait for delayed native removal before Undo c
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(restored.isConnected, true);
   assert.equal(e.service.listTabs(e.win).length, 1);
+});
+
+test("ordinary group adoption settles its native close before immediate Undo", async () => {
+  const e = environment();
+  const target = e.createWindow("window-b");
+  const tab = e.add("https://group-animation.test");
+  const group = e.createGroup(e.win, "animated-group", [tab], {
+    folder: false,
+  });
+  const adopt = target.gBrowser.adoptTabGroup;
+  target.gBrowser.adoptTabGroup = function (original) {
+    const result = adopt.call(this, original);
+    e.win.roots.get("work").tabsContainer.appendChild(original);
+    e.win.groups.push(original);
+    setImmediate(() => {
+      original.remove();
+      e.win.groups.splice(e.win.groups.indexOf(original), 1);
+    });
+    return result;
+  };
+  e.browser.waitFor = async predicate => {
+    for (let i = 0; !predicate() && i < 10; i++) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.ok(predicate());
+  };
+  const moved = await e.planApply({
+    action: "move",
+    groupIds: [group.id],
+    destinationWindowId: target.id,
+    spaceId: "research",
+  });
+  assert.equal(moved.summary.moved, 1);
+  assert.equal(group.isConnected, false);
+  await e.execute("zen_tabs_undo", { operationId: moved.operationId });
+  const restored = e.win.groups.find(item => item.id === group.id);
+  assert.notEqual(restored, group);
+  assert.equal(restored.tabs.length, 1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(restored.isConnected, true);
 });
 
 test("whole folder move within a window restores its original Space, parent and position", async () => {

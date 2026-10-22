@@ -1909,6 +1909,14 @@ export class ZenMcpWorkspaceTools {
           spaceId: target.spaceId ?? target.win.gZenWorkspaces.activeWorkspace,
         });
       }
+      if (moved && unit.tabs && !unit.isZenFolder) {
+        await this.browser.waitFor(
+          () => !unit.isConnected,
+          signal,
+          "The adopted group is still closing; inspect its operation receipt",
+          5000
+        );
+      }
       requireValue(
         moved,
         "adoption_failed",
