@@ -1416,10 +1416,12 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     if (previous?.parentElement === container) {
       previous.after(folder);
     } else {
-      const start = container.querySelector(".zen-tab-group-start");
+      const start = Array.from(container.children).find(child =>
+        child.classList.contains("zen-tab-group-start")
+      );
       container.insertBefore(
         folder,
-        start?.nextElementSibling ?? container.firstElementChild
+        start ? start.nextElementSibling : container.firstElementChild
       );
     }
   }

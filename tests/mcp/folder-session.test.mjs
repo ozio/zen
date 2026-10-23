@@ -12,6 +12,7 @@ class Node {
   constructor(id, kind = "box") {
     this.id = id;
     this.kind = kind;
+    this.classList = { contains: name => name === kind };
     this.children = [];
     this.parentElement = null;
     this.label = { addEventListener() {} };
@@ -53,7 +54,11 @@ class Node {
     if (selector === ".tab-group-label-container") {
       return this.label;
     }
-    return this.children.find(child => selector.includes(child.kind)) ?? null;
+    return (
+      this.children.find(child => selector.includes(child.kind)) ??
+      this.children.map(child => child.querySelector(selector)).find(Boolean) ??
+      null
+    );
   }
 }
 
@@ -163,6 +168,23 @@ test("a stale sibling in another Space cannot redirect folder recovery", () => {
     e.spaces.get("research").pinnedTabsContainer
   );
   assert.equal(folder.parentElement.children[1], folder);
+});
+
+test("a nested folder's start marker cannot become the Space insertion anchor", () => {
+  const e = setup();
+  const target = e.spaces.get("research").pinnedTabsContainer;
+  target.children[0].remove();
+  const sibling = e.add("sibling", "research", "folder");
+  sibling.insertBefore(new Node("nested-start", "zen-tab-group-start"));
+  sibling.insertBefore(new Node("nested-pin", "tab"));
+  const folder = e.add("restored", "archive", "folder");
+  e.manager.restoreFolderPlacement(folder, {
+    workspaceId: "research",
+    parentId: null,
+  });
+  assert.equal(folder.parentElement, target);
+  assert.equal(target.firstElementChild, folder);
+  assert.equal(sibling.children.length, 2);
 });
 
 test("session placement preserves nested folders and already-correct root order", () => {
