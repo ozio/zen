@@ -1407,22 +1407,31 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     const container = folder.pinned
       ? workspace?.pinnedTabsContainer
       : workspace?.tabsContainer;
-    if (!container || container.contains(folder)) {
+    if (!container) {
       return;
     }
     // Older empty-folder placeholders may lack a Space. Firefox then restores
     // the whole group into the active Space; the folder's saved identity wins.
     const previous = document.getElementById(stateData.prevSiblingInfo?.id);
     if (previous?.parentElement === container) {
-      previous.after(folder);
+      if (previous.nextElementSibling !== folder) {
+        previous.after(folder);
+      }
     } else {
-      const start = Array.from(container.children).find(child =>
-        child.classList.contains("zen-tab-group-start")
-      );
-      container.insertBefore(
-        folder,
-        start ? start.nextElementSibling : container.firstElementChild
-      );
+      const children = Array.from(container.children);
+      // SessionStore can insert restored content before decorative markers.
+      // The first real item is the durable start of the saved sibling order.
+      const anchor =
+        children.find(
+          child => gBrowser.isTab(child) || gBrowser.isTabGroup(child)
+        ) ??
+        children.find(child =>
+          child.classList.contains("pinned-tabs-container-separator")
+        ) ??
+        container.firstElementChild;
+      if (anchor !== folder) {
+        container.insertBefore(folder, anchor);
+      }
     }
   }
 

@@ -91,6 +91,8 @@ function setup() {
     },
     document: { getElementById: id => byId.get(id) ?? null },
     gBrowser: {
+      isTab: node => node.kind === "tab",
+      isTabGroup: node => node.kind === "folder",
       addTab(url, options) {
         adds.push({ url, options });
         return new Node("empty", "tab");
@@ -185,6 +187,34 @@ test("a nested folder's start marker cannot become the Space insertion anchor", 
   assert.equal(folder.parentElement, target);
   assert.equal(target.firstElementChild, folder);
   assert.equal(sibling.children.length, 2);
+});
+
+test("session restore repairs root-folder order even when both folders are already in the right Space", () => {
+  const e = setup();
+  const second = e.add("second", "research", "folder");
+  const first = e.add("first", "research", "folder");
+  const container = e.spaces.get("research").pinnedTabsContainer;
+  const marker = container.firstElementChild;
+  container.insertBefore(marker, container.children.at(-1));
+  e.manager.restoreFolderPlacement(first, {
+    workspaceId: "research",
+    parentId: null,
+  });
+  e.manager.restoreFolderPlacement(second, {
+    workspaceId: "research",
+    parentId: null,
+    prevSiblingInfo: { id: first.id },
+  });
+  assert.deepEqual(
+    container.children.filter(x => x.kind === "folder").map(x => x.id),
+    ["first", "second"]
+  );
+  e.manager.restoreFolderPlacement(second, {
+    workspaceId: "research",
+    parentId: null,
+    prevSiblingInfo: { id: first.id },
+  });
+  assert.equal(first.nextElementSibling, second);
 });
 
 test("session placement preserves nested folders and already-correct root order", () => {
