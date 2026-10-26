@@ -1038,7 +1038,9 @@ class nsZenWorkspaces {
       // resolved before the session file was necessarily readable, so this is
       // the point where the destination is actually known.
       await gZenSpaceRoutingManager.routeStartupTab(
-        initialTab, window, this._startupCommandLineWorkspaceId
+        initialTab,
+        window,
+        this._startupCommandLineWorkspaceId
       );
       removedEmptyTab = true;
       delete this._initialTab;

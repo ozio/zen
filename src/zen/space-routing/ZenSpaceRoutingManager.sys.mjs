@@ -201,7 +201,9 @@ class nsZenSpaceRoutingManager {
     let targetRoute = this.routeUri(uriString, { fromExternal: true });
     if (targetRoute === "first-space") {
       const workspaces = win.gZenWorkspaces.getWorkspaces();
-      targetRoute = (workspaces.length ? workspaces : win.gZenWorkspaces.getWorkspaces(true))[0]?.uuid;
+      targetRoute = (
+        workspaces.length ? workspaces : win.gZenWorkspaces.getWorkspaces(true)
+      )[0]?.uuid;
     }
     return targetRoute === "most-recent-space" ? null : targetRoute;
   }
