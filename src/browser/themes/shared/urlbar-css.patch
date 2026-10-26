@@ -1,11 +1,10 @@
 diff --git a/browser/themes/shared/urlbar.css b/browser/themes/shared/urlbar.css
-index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d79d6945af 100644
 --- a/browser/themes/shared/urlbar.css
 +++ b/browser/themes/shared/urlbar.css
-@@ -26,29 +26,14 @@
+@@ -27,30 +27,15 @@
    /* How far the background reaches past the input while the view is open. */
    --urlbar-background-overhang-open: 8px;
- 
+
 -  /* How far each half of the joint background runs past the seam before it is
 -     clipped back to it. Must exceed the open background's 14px shadow blur, so
 -     each half's shadow is the whole surface's. */
@@ -24,17 +23,18 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
    /* The container's block padding, which the popover takes as its offset from
       the container's border box. */
    --urlbar-container-padding-block: var(--urlbar-padding-block);
- 
+
    @media not -moz-pref("browser.nova.enabled") {
      --urlbar-basic-component-size: calc(var(--urlbar-height) - 2 * (var(--urlbar-input-container-border-width) + var(--urlbar-input-container-padding)));
 -    --urlbar-icon-padding: calc((var(--urlbar-height) - 2px /* border */ - 2px /* padding */ - 16px /* icon */) / 2);
--    --urlbar-input-container-padding: round(up, 1px, env(hairline));
 +    --urlbar-icon-padding: calc((var(--urlbar-height) - 2px /* border */ - 14px /* icon */) / 2);
+     --urlbar-component-gap: 0px;
+-    --urlbar-input-container-padding: round(up, 1px, env(hairline));
 +    --urlbar-input-container-padding: 2px;
      --urlbar-background-overhang-open: 0px;
    }
    &[uidensity="compact"] {
-@@ -136,18 +121,13 @@
+@@ -142,18 +127,13 @@
      min(var(--urlbar-background-border-radius), var(--urlbar-height) / 2) + var(--urlbar-background-overhang-open)
    );
    --urlbar-background-box-shadow-open: 0 0 14px 0 var(--chrome-box-shadow);
@@ -53,9 +53,9 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
 -  --urlbar-input-growth-open-block: 0px;
 +  --urlbar-margin-block-start-open: calc((var(--urlbar-container-height) - var(--urlbar-height)) / 2);
    --urlbar-searchmode-switcher-panel-list-min-width: 17em;
- 
+
    @media (prefers-contrast) {
-@@ -159,6 +139,7 @@
+@@ -165,6 +145,7 @@
      --urlbar-background-border-open: var(--urlbar-input-container-border-width) solid var(--panel-border-color);
      --urlbar-background-border-focused: var(--urlbar-background-border);
      --urlbar-background-box-shadow-open: 0 2px 14px var(--chrome-box-shadow);
@@ -63,7 +63,7 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
      /* We want the focus outline with the theme's border-color when focused.
         --toolbar-field-border-color-focus is set equal to --focus-outline-color
         on :root, but LWT themes can override this value. */
-@@ -167,8 +148,7 @@
+@@ -173,8 +154,7 @@
      --urlbar-input-container-outline-open: none;
      --urlbar-input-container-outline-open-focused: none;
      --urlbar-input-container-outline-offset-open: 0px;
@@ -73,28 +73,28 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
      --urlbar-searchmode-switcher-panel-list-min-width: auto;
    }
  }
-@@ -185,7 +165,7 @@ toolbar[inactive="true"] .urlbar,
+@@ -190,7 +170,7 @@
  .urlbar:not([usertyping]) > .urlbar-input-container > .urlbar-go-button,
  .urlbar:not(#searchbar-new, [focused]) > .urlbar-input-container > .urlbar-go-button,
  #urlbar-revert-button-container {
 -  display: none;
 +  display: none !important;
  }
- 
+
  /* Document Picture-in-Picture API window */
-@@ -206,6 +186,8 @@ toolbar[inactive="true"] .urlbar,
+@@ -211,6 +191,8 @@
  .urlbar-container {
    padding-block: var(--urlbar-container-padding-block);
    margin-inline: var(--urlbar-margin-inline);
 +
 +  min-height: var(--urlbar-container-height);
  }
- 
+
  .urlbar {
-@@ -216,10 +198,27 @@ toolbar[inactive="true"] .urlbar,
+@@ -221,10 +203,27 @@
    -moz-user-focus: ignore;
    user-select: none;
- 
+
 -  /* Every bar gives its input container the same anchor name, so scope it here.
 -     An unscoped name resolves to whichever container comes last in the
 -     document, which would anchor the address bar's view to the search bar. */
@@ -121,12 +121,12 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
 +    flex-direction: column;
 +  }
  }
- 
+
  .urlbar,
-@@ -298,30 +297,16 @@ toolbar[inactive="true"] .urlbar,
+@@ -342,30 +341,16 @@
      border: var(--urlbar-background-border-focused);
    }
- 
+
 -  .urlbar[popover-open] > & {
 +  .urlbar:popover-open:where([open], :not([in-page])) > & {
      border: var(--urlbar-background-border-open);
@@ -137,7 +137,7 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
      border-start-start-radius: var(--urlbar-background-border-top-radius-open);
      border-start-end-radius: var(--urlbar-background-border-top-radius-open);
    }
- 
+
 -  /* The rest of the joint background is painted by the view's popover, which
 -     the input can't reach into. Each half runs past the seam by more than the
 -     shadow's blur radius, so its shadow carries the whole surface's geometry,
@@ -156,19 +156,15 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
 +  :root[uidensity="compact"] .urlbar:popover-open:not([open]) > & {
 +    box-shadow: var(--urlbar-background-box-shadow-open-compact);
    }
- 
+
    .urlbar[open] > & {
-@@ -346,21 +331,17 @@ toolbar[inactive="true"] .urlbar,
+@@ -390,21 +375,17 @@
    border-radius: var(--urlbar-border-radius);
    overflow: clip;
- 
+
 -  /* The view's popover positions itself against this box. */
 -  anchor-name: --urlbar-anchor;
-+  .urlbar:popover-open > & {
-+    width: 100%;
-+    height: 100%;
-+  }
- 
+-
 -  /* The negative margins keep the bar's own box, so the toolbar's layout
 -     doesn't change when the view opens. */
 -  .urlbar[popover-open] > & {
@@ -176,17 +172,22 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
 -    margin-inline: calc(-1 * var(--urlbar-input-growth-open-inline));
 -    padding-block: var(--urlbar-input-growth-open-block);
 -    padding-inline: calc(var(--urlbar-input-growth-open-inline) + var(--urlbar-input-container-padding));
++  .urlbar:popover-open > & {
++    width: 100%;
++    height: 100%;
++  }
++
 +  .urlbar:popover-open:where([open], :not([in-page])) > & {
      outline: var(--urlbar-input-container-outline-open);
      outline-offset: var(--urlbar-input-container-outline-offset-open);
    }
- 
+
 -  .urlbar[popover-open][focused] > & {
 +  .urlbar[focused]:popover-open:where([open], :not([in-page])) > & {
      outline: var(--urlbar-input-container-outline-open-focused);
    }
- }
-@@ -470,6 +451,10 @@ toolbar[inactive="true"] .urlbar,
+
+@@ -520,6 +501,10 @@
    .urlbar:not([focused])[textoverflow="left"][domaindir="rtl"] > .urlbar-input-container > .urlbar-input-box > & {
      mask-image: linear-gradient(to right, transparent var(--urlbar-scheme-size), black calc(var(--urlbar-scheme-size) + 3ch));
    }
@@ -195,12 +196,12 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
 +    mask-image: linear-gradient(to right, transparent, black 3ch, black calc(100% - 3ch), transparent);
 +  }
  }
- 
+
  #urlbar-scheme {
-@@ -526,71 +511,41 @@ toolbar[inactive="true"] .urlbar,
+@@ -576,70 +561,19 @@
    position: relative;
  }
- 
+
 -/* Neutralize the UA popover rules the view supplies itself. :where() holds the
 -   specificity at zero, so the theme sheets win. */
 -:where(.urlbarView) {
@@ -259,21 +260,13 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
 -    clip-path: inset(
 -      var(--urlbar-joint-background-overlap) calc(-1 * var(--urlbar-joint-background-shadow-margin)) calc(-1 * var(--urlbar-joint-background-shadow-margin))
 -    );
-+@media not -moz-pref("browser.nova.enabled") {
-+  @keyframes urlbar-grow {
-+    0% {
-+      transform: scaleX(0.99) scaleY(0.98);
-+    }
-+    100% {
-+      transform: scale(1);
-+    }
-   }
+-  }
 -}
- 
--@media not -moz-pref("browser.nova.enabled") {
+-
+ @media not -moz-pref("browser.nova.enabled") {
    .urlbar-input-container {
      border: var(--urlbar-input-container-border);
-   }
++  }
 +
 +  .urlbar:popover-open:where([open], :not([in-page])) {
 +    width: calc(var(--urlbar-width) + 2 * var(--urlbar-margin-inline));
@@ -283,23 +276,10 @@ index f340b5fa0866c7185734fba0e5152c3f8ece7e44..3a5efd1747ff9653ba827c3b0eacb2d7
 +      padding-block: calc((var(--urlbar-container-height) - var(--urlbar-height)) / 2);
 +      padding-inline: calc(var(--urlbar-margin-inline) + var(--urlbar-input-container-padding));
 +    }
-+
-+    > .urlbar-background {
-+      animation-name: urlbar-grow;
-+      animation-duration: 0s;
-+      animation-timing-function: var(--animation-easing-function);
-+
-+      @media (prefers-reduced-motion: no-preference) {
-+        [popover-animate] > & {
-+          animation-duration: 150ms;
-+        }
-+      }
-+    }
-+  }
+   }
  }
- 
- :root[popup-window] #urlbar-container {
-@@ -1606,3 +1561,54 @@ toolbar[inactive="true"] .urlbar,
+
+@@ -1652,3 +1586,54 @@
      }
    }
  }

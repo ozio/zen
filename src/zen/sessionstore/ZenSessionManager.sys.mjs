@@ -755,7 +755,15 @@ export class nsZenSessionManager {
    * @returns {boolean} True if the tab should be collected, false otherwise.
    */
   #shouldCollectTab(tabData) {
-    return tabData && !(tabData.zenIsEmpty && !tabData.groupId);
+    if (!tabData || (tabData.zenIsEmpty && !tabData.groupId)) {
+      return false;
+    }
+    // See gh-12152.
+    let isBlank = this.#isBlankTabData(tabData);
+    if (isBlank) {
+      this.log("Skipping blank tab data", tabData);
+    }
+    return !!tabData.zenSyncId || !isBlank;
   }
 
   /**
@@ -768,7 +776,17 @@ export class nsZenSessionManager {
     const entries = aTabData.entries || [];
     return (
       !entries.length ||
-      (entries.length === 1 && entries[0].url === "about:blank")
+      (entries.length === 1 &&
+        (() => {
+          const entryUrl = entries[0].url;
+          const aTabState = aTabData;
+          return (
+            entryUrl == "about:blank" ||
+            (entryUrl == "about:home" && !aTabState.splitViewId) ||
+            (entryUrl == "about:newtab" && !aTabState.splitViewId) ||
+            entryUrl == "about:privatebrowsing"
+          );
+        })())
     );
   }
 
@@ -949,7 +967,6 @@ export class nsZenSessionManager {
     const newState = { windows: [newWindow] };
     this.log(`Cloning window with ${newWindow.tabs.length} tabs`);
 
-    aWindow.__isNewZenWindow = true;
     SessionStoreInternal._deferredInitialState = newState;
     SessionStoreInternal.initializeWindow(aWindow, newState);
     this.#refreshRestoredTabsState(aWindow, SessionStoreInternal).catch(e =>

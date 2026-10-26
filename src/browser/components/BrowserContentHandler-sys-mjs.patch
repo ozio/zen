@@ -8,12 +8,12 @@ diff --git a/browser/components/BrowserContentHandler.sys.mjs b/browser/componen
 +  gZenSpaceRoutingManager:
 +    "resource:///modules/zen/spacerouting/ZenSpaceRoutingManager.sys.mjs",
  });
- 
+
  /**
-@@ -672,6 +674,28 @@
+@@ -672,6 +674,62 @@
        }
      }
- 
+
 +    try {
 +      let blankWindowParam = cmdLine.handleFlagWithParam("blank-window", false);
 +      if (blankWindowParam !== null) {
@@ -35,22 +35,67 @@ diff --git a/browser/components/BrowserContentHandler.sys.mjs b/browser/componen
 +      }
 +    }
 +
++    try {
++      let zenWorkspaceParam = cmdLine.handleFlagWithParam("space", false);
++      if (zenWorkspaceParam) {
++        zenCommandLineWorkspaces.set(cmdLine, zenWorkspaceParam);
++        let targetWin = lazy.BrowserWindowTracker.getTopWindow({
++          private: false,
++          allowPopups: false,
++        });
++        if (
++          targetWin?.gZenWorkspaces &&
++          !targetWin.gZenWorkspaces.privateWindowOrDisabled &&
++          cmdLine.findFlag("new-window", false) == -1
++        ) {
++          targetWin.gZenWorkspaces
++            .changeWorkspaceFromCommandLine(zenWorkspaceParam)
++            .catch(console.error);
++          targetWin.focus();
++          if (!cmdLine.length) {
++            cmdLine.preventDefault = true;
++          }
++        } else {
++          // Cold start: stash the space so the first window that
++          // restores picks it up, and let normal startup open that window.
++          Services.prefs.setStringPref(
++            "zen.workspaces.cmdline-initial-workspace",
++            zenWorkspaceParam
++          );
++        }
++      }
++    } catch (e) {
++      if (e.result != Cr.NS_ERROR_INVALID_ARG) {
++        throw e;
++      }
++    }
 +
      var searchParam = cmdLine.handleFlagWithParam("search", false);
      if (searchParam) {
        doSearch(searchParam, cmdLine);
-@@ -742,6 +766,7 @@
+@@ -742,6 +800,8 @@
        "  --new-tab <url>    Open <url> in a new tab.\n" +
        "  --data <data-URL>  Open a data: URL.\n" +
        "  --private-window [<url>] Open <url> in a new private window.\n";
 +    info += "  --blank-window [<url>]  Open the new blank window.\n";
++    info += "  --space <space> [<url>]  Switch to the space with the given name or UUID, and open <url> in it if given.\n";
      if (AppConstants.platform == "win") {
        info += "  --preferences      Open Options dialog.\n";
      } else {
-@@ -1308,11 +1333,11 @@
+@@ -1296,6 +1356,9 @@
+ };
+ var gBrowserContentHandler = new nsBrowserContentHandler();
+
++// The explicit Space belongs to this invocation, including asynchronous opens.
++const zenCommandLineWorkspaces = new WeakMap();
++
+ function handURIToExistingBrowser(
+   uri,
+   location,
+@@ -1308,11 +1371,11 @@
      return;
    }
- 
+
 -  let openInWindow = ({ browserDOMWindow }) => {
 +  let openInWindow = ({ browserDOMWindow }, routed = false) => {
      browserDOMWindow.openURI(
@@ -61,18 +106,19 @@ diff --git a/browser/components/BrowserContentHandler.sys.mjs b/browser/componen
        Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL |
          (forceAllowDataURI
            ? Ci.nsIBrowserDOMWindow.OPEN_FORCE_ALLOW_DATA_URI
-@@ -1329,8 +1354,21 @@
+@@ -1329,8 +1392,22 @@
      private: allowPrivate,
    });
- 
+
 +  // Resolve external web links before their first network load. The native
 +  // command-line handler stays synchronous; the router owns the continuation.
 +  if (!allowPrivate && (uri.schemeIs("https") || uri.schemeIs("http"))) {
 +    const readyWindow = navWin ||
 +      lazy.BrowserWindowTracker.getPendingWindow({ private: false }) ||
 +      openBrowserWindow(cmdLine, triggeringPrincipal, "about:blank");
-+    lazy.gZenSpaceRoutingManager.openExternalURI(uri, readyWindow, openInWindow)
-+      .catch(() => console.error("[ZenSpaceRouting] External link opening failed"));
++    lazy.gZenSpaceRoutingManager.openExternalURI(
++      uri, readyWindow, openInWindow, zenCommandLineWorkspaces.get(cmdLine)
++    ).catch(() => console.error("[ZenSpaceRouting] External link opening failed"));
 +    return;
 +  }
 +
@@ -83,10 +129,10 @@ diff --git a/browser/components/BrowserContentHandler.sys.mjs b/browser/componen
 +    );
      return;
    }
- 
-@@ -1737,6 +1775,16 @@
+
+@@ -1737,6 +1814,16 @@
      }
- 
+
      if (urilist.length) {
 +      // Cold launches and batches use the same routing path as running Zen.
 +      if (urilist.some(uri => uri.schemeIs("https") || uri.schemeIs("http"))) {

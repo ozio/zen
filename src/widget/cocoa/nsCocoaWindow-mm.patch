@@ -1,5 +1,4 @@
 diff --git a/widget/cocoa/nsCocoaWindow.mm b/widget/cocoa/nsCocoaWindow.mm
-index 1af56a5e..65809c85 100644
 --- a/widget/cocoa/nsCocoaWindow.mm
 +++ b/widget/cocoa/nsCocoaWindow.mm
 @@ -38,6 +38,7 @@
@@ -10,16 +9,18 @@ index 1af56a5e..65809c85 100644
  #include "nsDeviceContext.h"
  #include "nsDocShell.h"
  #include "nsDragService.h"
-@@ -74,6 +75,7 @@
+@@ -72,7 +73,9 @@
+ #include "gfxPlatform.h"
+ #include "qcms.h"
 
- #import <objc/runtime.h>
++#import <objc/runtime.h>
  #include <algorithm>
 +#include <cmath>
  #include "mozilla/AutoRestore.h"
  #include "mozilla/BasicEvents.h"
  #include "mozilla/Maybe.h"
-@@ -87,9 +89,12 @@
- #include "mozilla/StaticPrefs_gfx.h"
+@@ -87,9 +90,12 @@
+ #include "mozilla/StaticPrefs_mozilla.h"
  #include "mozilla/StaticPrefs_ui.h"
  #include "mozilla/StaticPrefs_widget.h"
 +#include "mozilla/StaticPrefs_zen.h"
@@ -31,7 +32,7 @@ index 1af56a5e..65809c85 100644
  #include "mozilla/widget/Screen.h"
 
  #ifdef ACCESSIBILITY
-@@ -561,9 +566,11 @@ static void ManipulateViewWithoutNeedingDisplay(NSView* aView,
+@@ -561,9 +567,11 @@
 
    // On macOS 10.14 and up CGEventPost won't work because of changes in macOS
    // to improve security. This code makes an NSEvent corresponding to the
@@ -46,7 +47,7 @@ index 1af56a5e..65809c85 100644
    // https://chromium.googlesource.com/chromium/src.git/+/62.0.3178.1/ui/events/test/cocoa_test_event_utils.mm#38
    CGPoint location = CGEventGetLocation(cgEvent);
    location.y += NSMinY([[mChildView window] frame]);
-@@ -576,7 +583,9 @@ static void ManipulateViewWithoutNeedingDisplay(NSView* aView,
+@@ -576,9 +584,95 @@
 
    NSEvent* event = [NSEvent eventWithCGEvent:cgEvent];
    [event setValue:[mChildView window] forKey:@"_window"];
@@ -56,11 +57,11 @@ index 1af56a5e..65809c85 100644
 +  }
 
    CFRelease(cgEvent);
-   return NS_OK;
-@@ -584,6 +593,90 @@ static void ManipulateViewWithoutNeedingDisplay(NSView* aView,
-   NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
- }
-
++  return NS_OK;
++
++  NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
++}
++
 +// NSEvent has no public magnify-event factory. This privileged Gecko testing
 +// API supplies the same accessors used by the real Cocoa router, without OS
 +// event posting or private multitouch APIs. It does not emulate hardware.
@@ -140,15 +141,10 @@ index 1af56a5e..65809c85 100644
 +  if (!RoutePiPTrackpadEvent(event) && mChildView) {
 +    [mChildView magnifyWithEvent:event];
 +  }
-+  return NS_OK;
-+
-+  NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
-+}
-+
- nsresult nsCocoaWindow::SynthesizeNativeTouchPoint(
-     uint32_t aPointerId, TouchPointerState aPointerState,
-     mozilla::LayoutDeviceIntPoint aPoint, double aPointerPressure,
-@@ -1333,6 +1426,162 @@ - (NSRect)_opaqueRectForWindowMoveWhenInTitlebar {
+   return NS_OK;
+
+   NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
+@@ -1333,6 +1427,162 @@
  }
  @end
 
@@ -311,10 +307,12 @@ index 1af56a5e..65809c85 100644
  void nsCocoaWindow::UpdateWindowDraggingRegion(
      const LayoutDeviceIntRegion& aRegion) {
    // mChildView returns YES from mouseDownCanMoveWindow, so we need to put
-@@ -1364,6 +1613,342 @@ - (NSRect)_opaqueRectForWindowMoveWhenInTitlebar {
+@@ -1362,6 +1612,342 @@
+     [[mChildView window] setMovableByWindowBackground:NO];
+     [[mChildView window] setMovableByWindowBackground:YES];
    }
- }
-
++}
++
 +void nsCocoaWindow::UnregisterPiPTrackpad() {
 +  FinishPiPTrackpadCursor(false);
 +  if (sPiPMouseOwner == this) sPiPMouseOwner = nullptr;
@@ -649,12 +647,10 @@ index 1af56a5e..65809c85 100644
 +    owner->FinishPiPTrackpadCursor(true);
 +  }
 +  return true;
-+}
-+
- nsEventStatus nsCocoaWindow::DispatchAPZInputEvent(InputData& aEvent) {
-   APZEventResult result;
+ }
 
-@@ -2045,6 +2630,8 @@ - (void)swipeWithEvent:(NSEvent*)anEvent {
+ nsEventStatus nsCocoaWindow::DispatchAPZInputEvent(InputData& aEvent) {
+@@ -2059,6 +2645,8 @@
  - (void)magnifyWithEvent:(NSEvent*)anEvent {
    NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
@@ -663,7 +659,7 @@ index 1af56a5e..65809c85 100644
    if ([self maybeRollup:anEvent]) {
      return;
    }
-@@ -2067,6 +2654,8 @@ - (void)magnifyWithEvent:(NSEvent*)anEvent {
+@@ -2081,6 +2669,8 @@
    }
    mGestureState = eGestureState_MagnifyGesture;
 
@@ -672,7 +668,7 @@ index 1af56a5e..65809c85 100644
    NSPoint locationInWindow =
        nsCocoaUtils::EventLocationForWindow(anEvent, [self window]);
    ScreenPoint position = ViewAs<ScreenPixel>(
-@@ -2110,7 +2699,7 @@ - (void)magnifyWithEvent:(NSEvent*)anEvent {
+@@ -2124,7 +2714,7 @@
                            100.0 * (1.0 - [anEvent magnification]),
                            nsCocoaUtils::ModifiersForEvent(anEvent)};
 
@@ -681,7 +677,7 @@ index 1af56a5e..65809c85 100644
 
    NS_OBJC_END_TRY_IGNORE_BLOCK;
  }
-@@ -2732,6 +3321,7 @@ - (void)scrollWheel:(NSEvent*)theEvent {
+@@ -2760,6 +3350,7 @@
    }
 
    NSEventPhase phase = [theEvent phase];
@@ -689,20 +685,22 @@ index 1af56a5e..65809c85 100644
    // Fire eWheelOperationStart/End events when 2 fingers touch/release the
    // touchpad.
    if (phase & NSEventPhaseMayBegin) {
-@@ -2746,11 +3336,9 @@ - (void)scrollWheel:(NSEvent*)theEvent {
+@@ -2774,11 +3365,9 @@
                      forEvent:theEvent];
    }
 
 -  if (!mGeckoChild) {
-+  if (mGeckoChild != geckoChildDeathGrip) {
-     return;
-   }
+-    return;
+-  }
 -  RefPtr<nsCocoaWindow> geckoChildDeathGrip(mGeckoChild);
 -
++  if (mGeckoChild != geckoChildDeathGrip) {
++    return;
++  }
    NSPoint locationInWindow =
        nsCocoaUtils::EventLocationForWindow(theEvent, [self window]);
 
-@@ -2833,6 +3421,9 @@ ScrollWheelInput wheelEvent(eventTimeStamp, modifiers, scrollMode,
+@@ -2861,6 +3450,9 @@
      geckoChildDeathGrip->DispatchAPZWheelInputEvent(wheelEvent);
    }
 
@@ -712,7 +710,7 @@ index 1af56a5e..65809c85 100644
    NS_OBJC_END_TRY_IGNORE_BLOCK;
  }
 
-@@ -3878,7 +4469,9 @@ - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+@@ -3909,7 +4501,9 @@
  // NSDraggingDestination
  - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
    MOZ_LOG(sCocoaLog, LogLevel::Info, ("ChildView draggingUpdated: entered\n"));
@@ -723,7 +721,7 @@ index 1af56a5e..65809c85 100644
  }
 
  // NSDraggingDestination
-@@ -3894,6 +4487,9 @@ - (void)draggingExited:(id<NSDraggingInfo>)sender {
+@@ -3925,6 +4519,9 @@
  - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
    nsAutoRetainCocoaObject kungFuDeathGrip(self);
    BOOL handled = [self doDragAction:eDrop sender:sender] != NSDragOperationNone;
@@ -733,12 +731,13 @@ index 1af56a5e..65809c85 100644
    NS_IF_RELEASE(mDragService);
    return handled;
  }
-@@ -4938,7 +5534,12 @@ - (BOOL)wantsBestResolutionOpenGLSurface {
+@@ -4978,7 +5575,12 @@
 
  nsCocoaWindow::~nsCocoaWindow() {
    NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
+-
 +  UnregisterPiPTrackpad();
-
++
 +  if (mIsBrowserWindow) {
 +    Preferences::UnregisterCallback(ZenWindowVibrancyPrefChanged,
 +                                    "zen.widget.macos.window-vibrancy", this);
@@ -746,7 +745,7 @@ index 1af56a5e..65809c85 100644
    RemoveAllChildren();
    if (mWindow && mWindowMadeHere) {
      CancelAllTransitions();
-@@ -5284,6 +5885,7 @@ static unsigned int WindowMaskForBorderStyle(BorderStyle aBorderStyle) {
+@@ -5345,6 +5947,7 @@
      return;
    }
    mOnDestroyCalled = true;
@@ -754,7 +753,7 @@ index 1af56a5e..65809c85 100644
 
    nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
 
-@@ -6364,6 +6966,9 @@ static bool AlwaysUsesNativeFullScreen() {
+@@ -6483,6 +7086,9 @@
 
  nsresult nsCocoaWindow::DoMakeFullScreen(bool aFullScreen,
                                           bool aUseSystemTransition) {
@@ -764,7 +763,7 @@ index 1af56a5e..65809c85 100644
    if (!mWindow) {
      return NS_OK;
    }
-@@ -7011,6 +7616,15 @@ static bool WindowIsTiled(NSWindow* aWindow) {
+@@ -7124,6 +7730,15 @@
 
    mInReportMoveEvent = false;
 
@@ -780,7 +779,7 @@ index 1af56a5e..65809c85 100644
    NS_OBJC_END_TRY_IGNORE_BLOCK;
  }
 
-@@ -7906,6 +8520,7 @@ - (void)windowDidResignKey:(NSNotification*)aNotification {
+@@ -8020,6 +8635,7 @@
 
  - (void)windowWillMove:(NSNotification*)aNotification {
    RollUpPopups();

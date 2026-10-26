@@ -14,11 +14,18 @@ class Node {
     this.kind = kind;
     this.classList = { contains: name => name === kind };
     this.children = [];
+    this.attributes = new Map();
     this.parentElement = null;
     this.label = { addEventListener() {} };
   }
   get firstElementChild() {
     return this.children[0] ?? null;
+  }
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
   }
   get nextElementSibling() {
     return (
@@ -109,6 +116,7 @@ function setup() {
   manager.updateFolderIcon = () => {};
   manager._createFolderNode = options => {
     const node = new Node(options.id ?? "folder", "folder");
+    node.setAttribute("zen-workspace-id", options.workspaceId ?? "archive");
     node.pinned = true;
     node.tabs = [];
     node.addTabs = tabs => {
@@ -137,6 +145,7 @@ test("creating a folder in an inactive Space assigns that Space to its empty pla
     e.spaces.get("research").pinnedTabsContainer
   );
   assert.equal(folder.tabs.length, 1);
+  assert.equal(folder.tabs[0].getAttribute("zen-workspace-id"), "research");
 });
 
 test("session restore repairs a root folder's physical Space and saved sibling position", () => {

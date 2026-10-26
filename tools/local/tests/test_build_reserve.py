@@ -141,6 +141,14 @@ class BuildReserveTests(unittest.TestCase):
         with self.assertRaises(DevError):
             incremental_disk_baseline(self.ctx, self.chain, 4)
 
+    def test_canonical_rust_pin_is_a_native_input_even_with_unchanged_reported_tools(self):
+        self.write("rust-toolchain.toml", '[toolchain]\nchannel = "1.95.0"\n')
+        self.commit()
+        with self.assertRaises(DevError):
+            incremental_disk_baseline(self.ctx, self.chain, 4)
+        with self.cocoa_baseline(), self.assertRaises(DevError):
+            incremental_disk_baseline(self.ctx, self.chain, 8, native_incremental=True)
+
     def pip_baseline(self):
         self.pip_text = "- name: zen.pip.trackpad.enabled\n  value: true\n"
         for name, value in (("fling-speed",1200),("fling-distance",24),("snap-duration-ms",180)):

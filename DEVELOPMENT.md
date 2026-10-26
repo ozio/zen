@@ -18,7 +18,7 @@ git remote -v
 python tools/local/dev.py doctor --json
 ```
 
-Use the repository's Node 22, Python 3.11 and Rust 1.95.0 pins in `.nvmrc`, `.python-version` and `.rust-toolchain`. Select versions locally, with an existing version manager or command-scoped environment. For example, an existing nvm installation can use `nvm use`; the development wrapper selects the Rust pin for its child commands. The `.rust-toolchain` filename is a wrapper input, not rustup's automatic `rust-toolchain` override. Installing a missing Rust version with `rustup toolchain install 1.95.0` does not require changing the global default. Avoid `rustup default`, global Node aliases, system Python replacement and shell configuration edits.
+Use the repository's Node 22, Python 3.11 and Rust 1.95.0 pins in `.nvmrc`, `.python-version` and `rust-toolchain.toml`. Select versions locally, with an existing version manager or command-scoped environment. For example, an existing nvm installation can use `nvm use`; the development wrapper selects the Rust pin for its child commands. The wrapper and rustup read the same `[toolchain].channel` in `rust-toolchain.toml`; older retained candidates may still use `.rust-toolchain`. Installing a missing Rust version with `rustup toolchain install 1.95.0` does not require changing the global default. Avoid `rustup default`, global Node aliases, system Python replacement and shell configuration edits.
 
 When `python` points elsewhere, invoke `python3.11 tools/local/dev.py ...`. A Python pin is documentation for version managers, not a promise that every shell automatically honors it. Check `doctor` before bootstrap and keep compiler/SDK versions in the build receipt.
 

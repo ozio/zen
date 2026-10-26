@@ -22,6 +22,11 @@ globalThis.PathUtils = {
   join: (...parts) => parts.join("/"),
 };
 globalThis.Services = { wm: { getMostRecentWindow: () => latest } };
+class ExternalStartupOptions {
+  hasKey(name) { return name === "fromExternal"; }
+  getPropertyAsBool() { return true; }
+}
+globalThis.Ci = { nsIPropertyBag2: ExternalStartupOptions };
 modules.PrivateBrowsingUtils = { isWindowPrivate: win => !!win.private };
 modules.BrowserWindowTracker = {
   getOrderedWindows: () => windows.filter(win => !win.private),
@@ -72,6 +77,9 @@ function setup() {
     activeWorkspace: "first",
     getWorkspaces: () => spaces,
     getWorkspaceFromId: id => spaces.find(space => space.uuid === id),
+    resolveWorkspaceFromCLIString: value => spaces.find(space =>
+      space.uuid === value || space.name.toLowerCase() === value.toLowerCase()
+    ) ?? null,
     lastSelectedWorkspaceTabs: {},
     moveTabToWorkspace() {},
     async changeWorkspace() {},
@@ -229,6 +237,63 @@ test("opening failures are never retried after an unknown native outcome", async
     throw Error("after open");
   });
   assert.equal(count, 1);
+});
+
+test("explicit --space name or UUID wins over rules and Jev with the matching container", async () => {
+  for (const destination of ["WORK", "work"]) {
+    const { manager, win } = setup();
+    await manager.ready;
+    rule(manager, "example.com", "first");
+    classify = () => assert.fail("explicit destination must bypass Jev");
+    let calls = 0;
+    await manager.openExternalURI({ spec: "https://example.com" }, win, (target, routed) => {
+      calls++;
+      assert.equal(routed, true);
+      const before = manager.onBeforeAddTab("https://example.com", { fromExternal: true }, target);
+      assert.equal(before.targetRoute, "work");
+      assert.equal(before.userContextId, 4);
+    }, destination);
+    assert.equal(calls, 1);
+  }
+});
+
+test("cold --space resolution waits for restored Spaces and unknown names retain routing", async () => {
+  for (const destination of ["Work", "missing"]) {
+    const { manager, win } = setup();
+    await manager.ready;
+    win.gZenStartup.isReady = false;
+    win.gZenWorkspaces.resolveWorkspaceFromCLIString = value => {
+      assert.ok(win.gZenStartup.isReady, "resolve only after startup");
+      return value === "Work" ? { uuid: "work" } : null;
+    };
+    let calls = 0;
+    const pending = manager.openExternalURI({ spec: "https://example.com" }, win, target => {
+      calls++;
+      const before = manager.onBeforeAddTab("https://example.com", { fromExternal: true }, target);
+      assert.equal(before.targetRoute, destination === "Work" ? "work" : "first");
+    }, destination);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(calls, 0);
+    win.gZenStartup.isReady = true;
+    await pending;
+    assert.equal(calls, 1);
+  }
+});
+
+test("native startup maps first-Space fallback and keeps an explicit CLI destination", async () => {
+  const { manager, win } = setup();
+  await manager.ready;
+  win.arguments = [null, new ExternalStartupOptions()];
+  win.gBrowserInit = { uriToLoadPromise: "https://example.com" };
+  const moved = [];
+  win.gZenWorkspaces.moveTabToWorkspace = (_, id) => moved.push(id);
+  const tab = { parentNode: {} };
+  assert.equal(manager.getStartupUserContextId(win), 0);
+  await manager.routeStartupTab(tab, win);
+  assert.deepEqual(moved, ["first"]);
+  rule(manager, "example.com", "first");
+  await manager.routeStartupTab(tab, win, "work");
+  assert.deepEqual(moved, ["first", "work"]);
 });
 
 test("independent external opens of an identical URL do not overwrite one another", async () => {

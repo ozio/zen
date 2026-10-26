@@ -261,10 +261,29 @@ def _candidate(ctx: Context, names: Sequence[str], fallback: Optional[str] = Non
     return Path(found).absolute() if found else None
 
 
+def rust_toolchain_pin(root: Path) -> str:
+    """Read rustup's canonical pin, retaining older candidate compatibility."""
+    canonical = root / "rust-toolchain.toml"
+    legacy = root / ".rust-toolchain"
+    if canonical.is_file():
+        try:
+            import tomllib
+            pin = tomllib.loads(canonical.read_text())["toolchain"]["channel"]
+        except (ImportError, KeyError, TypeError, ValueError) as error:
+            raise DevError("Read rust-toolchain.toml with the pinned Python 3.11") from error
+        if legacy.is_file() and legacy.read_text().strip() != pin:
+            raise DevError("Conflicting canonical and legacy Rust pins")
+    else:
+        pin = legacy.read_text().strip()
+    if not isinstance(pin, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", pin):
+        raise DevError("Rust requires an exact stable toolchain version")
+    return pin
+
+
 def toolchains(ctx: Context, required: bool = True) -> Dict[str, Any]:
     node_pin = (ctx.root / ".nvmrc").read_text().strip()
     python_pin = (ctx.root / ".python-version").read_text().strip()
-    rust_pin = (ctx.root / ".rust-toolchain").read_text().strip()
+    rust_pin = rust_toolchain_pin(ctx.root)
     node = _candidate(ctx, ["node/bin/node", "node/node.exe"])
     python = _candidate(ctx, ["python/bin/python3", "python/bin/python", "python/python.exe"])
     if python is None and shutil.which("uv"):

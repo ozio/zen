@@ -50,6 +50,8 @@ function setup({ right = true, compact = false } = {}) {
       "zen-appcontent-wrapper",
       "zen-toast-container",
       "zen-main-app-wrapper",
+      "cmd_zenToggleSidebar",
+      "cmd_zenToggleTabsOnRight",
     ].map((id) => [id, new Element()]),
   );
   const springs = [];
@@ -361,6 +363,57 @@ test("cancelling a partially open gesture restores wrapper styles and interactio
   assert.ok(!s.lib.hasAttribute("transitioning"));
   assert.equal(s.lib.style.pointerEvents, "");
   assert.ok(!s.nodes.get("zen-appcontent-wrapper").properties.has("transform"));
+});
+
+test("Library holds sidebar commands and preserves an already disabled command", async () => {
+  const s = setup();
+  const toggle = s.nodes.get("cmd_zenToggleSidebar");
+  const right = s.nodes.get("cmd_zenToggleTabsOnRight");
+  right.setAttribute("disabled", "true");
+  const opening = s.Library.animateProgress(1);
+  await s.flush();
+  await opening;
+  assert.ok(toggle.hasAttribute("disabled"));
+  s.complete();
+  await s.Library.startSwipe();
+  s.Library.swipeProgress(0.2);
+  await s.Library.animateProgress(0);
+  s.complete();
+  assert.ok(!toggle.hasAttribute("disabled"));
+  assert.ok(right.hasAttribute("disabled"));
+});
+
+test("a zero-distance swipe still cleans up at the closed endpoint", async () => {
+  const s = setup();
+  const start = s.Library.startSwipe();
+  await s.flush();
+  await start;
+  assert.ok(s.nodes.get("cmd_zenToggleSidebar").hasAttribute("disabled"));
+  await s.Library.animateProgress(0);
+  assert.ok(!s.lib.hasAttribute("open"));
+  assert.ok(!s.lib.hasAttribute("transitioning"));
+  assert.ok(!s.nodes.get("cmd_zenToggleSidebar").hasAttribute("disabled"));
+});
+
+test("mount completion after closing cannot focus the hidden section", async () => {
+  const s = setup();
+  const opening = s.Library.animateProgress(1);
+  await s.flush();
+  await opening;
+  s.complete();
+  let mounted;
+  let focuses = 0;
+  s.lib.updateComplete = new Promise(resolve => { mounted = resolve; });
+  s.lib._content = {
+    children: [{ dataset: { section: "spaces" }, onLibraryOpened() { focuses++; } }],
+  };
+  await s.Library.startSwipe();
+  await s.Library.animateProgress(0);
+  s.complete();
+  mounted();
+  await Promise.resolve();
+  assert.equal(focuses, 0);
+  assert.ok(!s.lib.hasAttribute("open"));
 });
 
 for (const right of [false, true]) {

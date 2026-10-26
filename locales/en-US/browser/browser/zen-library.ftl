@@ -88,6 +88,17 @@ library-history-forget-button =
     .title = Remove from history
 library-history-reopen-button =
     .title = Reopen page
+library-history-menu-open =
+    .label = Reopen Page
+library-history-menu-forget =
+    .label = Forget This Page
+
+-library-cancel-download = Cancel download
+-library-show-in-folder = { PLATFORM() ->
+    [macos] Show in Finder
+    [windows] Show in File Explorer
+   *[other] Show in folder
+}
 
 library-downloads-empty = No downloads found
 library-downloads-clear-all =
@@ -102,14 +113,23 @@ library-downloads-menu-hide =
     .label = Hide from Zen
 library-downloads-menu-delete =
     .label = Delete File
-library-downloads-opening-in = { PLATFORM() ->
-    [macos] Opening in Finder…
-    [windows] Opening in File Explorer…
-   *[other] Opening in file manager…
-}
+library-downloads-menu-clear-preview =
+    .label = Clear Download Preview
+library-downloads-menu-retry =
+    .label = Retry Download
 library-downloads-open-when-done = Opens when finished
+# Variables:
+#   $rate (string) - How much comes in per second, like 3.2
+#   $unit (string) - The unit of $rate, like MB
+library-downloads-speed = { $rate } { $unit }/s
 library-downloads-cancel-button =
-    .title = Cancel download
+    .title = { -library-cancel-download }
+library-downloads-cancel-tooltip =
+    .tooltiptext = { -library-cancel-download }
+library-downloads-show-button =
+    .title = { -library-show-in-folder }
+library-downloads-show-tooltip =
+    .tooltiptext = { -library-show-in-folder }
 library-downloads-filter-title = Filter Downloads…
 library-downloads-filter-type = File type
 library-downloads-filter-when = When was it downloaded?

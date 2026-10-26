@@ -354,11 +354,19 @@ class nsZenWorkspaces {
     this._fixIndicatorsNames(workspaces);
   }
 
+  /**
+   * The essentials section for a container.
+   *
+   * @param {number|string|Element} [container] - A userContextId, as a number
+   *   or a numeric string (session data saved by older versions may hold
+   *   strings), or an element carrying a `usercontextid` attribute.
+   * @returns {Element}
+   */
   getEssentialsSection(container = 0) {
-    if (typeof container !== "number") {
-      container = container?.getAttribute("usercontextid");
+    if (container && typeof container === "object") {
+      container = container.getAttribute("usercontextid");
     }
-    container ??= 0;
+    container = parseInt(container, 10) || 0;
     if (!this.containerSpecificEssentials) {
       container = 0;
     }
@@ -407,6 +415,48 @@ class nsZenWorkspaces {
 
   getCurrentSpaceContainerId() {
     return this.#spaceContainerId(this.getActiveWorkspaceFromCache());
+  }
+
+  /**
+   * The container the initial tab of a window should be created with, when
+   * either the command line asked for a space or Space Routing has a
+   * destination for the startup URI.
+   *
+   * `isSpaceDefault` says the container is a space's default rather than one
+   * the tab asked for, which is what zenDefaultUserContextId marks.
+   *
+   * @returns {{userContextId: number|null, isSpaceDefault: boolean}} The
+   *   container to use, with null leaving Firefox's choice alone
+   */
+  getStartupUserContextId() {
+    try {
+      // Stashed by the `--space` flag. Consumed later, during init.
+      const cmdLineSpace = Services.prefs.getStringPref(
+        "zen.workspaces.cmdline-initial-workspace",
+        ""
+      );
+      // The cache is filled for every window but the first one of a session,
+      // where the session store is all there is.
+      const workspace =
+        this.resolveWorkspaceFromCLIString(cmdLineSpace) ??
+        this.resolveWorkspaceFromCLIString(cmdLineSpace, true);
+      if (workspace) {
+        return {
+          userContextId: this.#spaceContainerId(workspace),
+          isSpaceDefault: true,
+        };
+      }
+      return {
+        userContextId: gZenSpaceRoutingManager.getStartupUserContextId(window),
+        isSpaceDefault: false,
+      };
+    } catch (e) {
+      console.error(
+        "gZenWorkspaces: Error resolving the initial tab's container",
+        e
+      );
+      return { userContextId: null, isSpaceDefault: false };
+    }
   }
 
   getCurrentEssentialsContainer() {
@@ -736,6 +786,24 @@ class nsZenWorkspaces {
     }
   }
 
+  resolveWorkspaceFromCLIString(value, lieToMe = false) {
+    if (!value) {
+      return null;
+    }
+    try {
+      const workspaces = this.getWorkspaces(lieToMe);
+      return (
+        workspaces.find(
+          workspace =>
+            workspace.uuid === value ||
+            workspace.name?.toLowerCase() === value.toLowerCase()
+        ) || null
+      );
+    } catch {
+      return null;
+    }
+  }
+
   getWorkspaces(lieToMe = false) {
     if (lieToMe) {
       const { ZenSessionStore } = ChromeUtils.importESModule(
@@ -805,6 +873,22 @@ class nsZenWorkspaces {
       aWinData.activeZenSpace || this._workspaceCache[0].uuid;
     if (aWinData.selected) {
       this._sessionSelected = aWinData.selected;
+    }
+    const cmdLineWorkspace = this.privateWindowOrDisabled
+      ? ""
+      : Services.prefs.getStringPref(
+          "zen.workspaces.cmdline-initial-workspace",
+          ""
+        );
+    if (cmdLineWorkspace) {
+      // Set by the `--space` command line flag on a cold start
+      Services.prefs.clearUserPref("zen.workspaces.cmdline-initial-workspace");
+      const initialWorkspace =
+        this.resolveWorkspaceFromCLIString(cmdLineWorkspace);
+      if (initialWorkspace) {
+        this.activeWorkspace = initialWorkspace.uuid;
+        this._startupCommandLineWorkspaceId = initialWorkspace.uuid;
+      }
     }
     let promise = this.#initializeWorkspaces();
     for (const workspace of spacesFromStore) {
@@ -917,6 +1001,7 @@ class nsZenWorkspaces {
       delete this._tabToRemoveForEmpty;
       delete this._shouldOverrideTabs;
       delete this._initialTab;
+      delete this._startupCommandLineWorkspaceId;
       resolveSelectPromise();
     };
 
@@ -948,6 +1033,13 @@ class nsZenWorkspaces {
         forceUngrouped: true,
         tabIndex: 0,
       });
+      // A link handed to us by another application can be configured to open
+      // in a particular space. The container gBrowser gave this tab was
+      // resolved before the session file was necessarily readable, so this is
+      // the point where the destination is actually known.
+      await gZenSpaceRoutingManager.routeStartupTab(
+        initialTab, window, this._startupCommandLineWorkspaceId
+      );
       removedEmptyTab = true;
       delete this._initialTab;
     }
@@ -1166,6 +1258,12 @@ class nsZenWorkspaces {
       return null;
     }
 
+    // If the tab being closed is not selected, we don't need to select
+    // a new empty tab (as the active selection is already on a different tab).
+    if (!tab.selected) {
+      return null;
+    }
+
     let workspaceID = tab.getAttribute("zen-workspace-id");
     if (!workspaceID) {
       return null;
@@ -1281,6 +1379,9 @@ class nsZenWorkspaces {
     } else {
       openInContainerMenuItem.setAttribute("hidden", "true");
     }
+    // Spaces are managed from the library, so the entry needs it enabled.
+    document.getElementById("context_zenManageWorkspaces").hidden =
+      !Services.prefs.getBoolPref("zen.library.enabled");
     // Call parent node as on windows, the text can be double clicked
     let target;
     try {
@@ -1815,6 +1916,32 @@ class nsZenWorkspaces {
   async changeWorkspaceWithID(workspaceID, ...args) {
     const workspace = this.getWorkspaceFromId(workspaceID);
     return await this.changeWorkspace(workspace, ...args);
+  }
+
+  async changeWorkspaceFromCommandLine(workspaceMatch) {
+    // A URL in the same command line is opened in the same tick as this call
+    // and takes its container from the active space, so the destination has to
+    // become active before the first await rather than once the switch has
+    // animated its way there.
+    const early = this.resolveWorkspaceFromCLIString(workspaceMatch);
+    const movedEarly = !!early && early.uuid !== this.activeWorkspace;
+    if (movedEarly) {
+      this.activeWorkspace = early.uuid;
+    }
+
+    await this.promiseInitialized;
+    const workspace =
+      early ?? this.resolveWorkspaceFromCLIString(workspaceMatch);
+    if (!workspace) {
+      return;
+    }
+    if (movedEarly) {
+      // activeWorkspace is already the destination, so the switch has to be
+      // told this is not a no-op.
+      await this.changeWorkspace(workspace, { alwaysChange: true });
+    } else if (workspace.uuid !== this.activeWorkspace) {
+      await this.changeWorkspaceWithID(workspace.uuid);
+    }
   }
 
   async changeWorkspace(workspace, ...args) {
@@ -3524,7 +3651,10 @@ class nsZenWorkspaces {
   }
 
   onWindowResize(event = undefined) {
-    if (!(!event || event.target === window)) {
+    if (
+      !(!event || event.target === window) ||
+      document.documentElement.hasAttribute("inDOMFullscreen")
+    ) {
       return;
     }
     gZenUIManager.updateTabsToolbar(!!event);

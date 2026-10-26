@@ -149,6 +149,82 @@ class nsZenSpaceRoutingManager {
   }
 
   /**
+   * Resolves the container a startup URI from another application belongs in,
+   * so Tabbrowser can hand it to the initial tab.
+   *
+   * @param {Window} win - The browser window receiving the startup URI
+   * @returns {number|null} The container to use, or null to leave it alone
+   */
+  getStartupUserContextId(win) {
+    try {
+      const targetRoute = this.#startupExternalRoute(win);
+      if (!targetRoute) {
+        return null;
+      }
+
+      const workspace =
+        win.gZenWorkspaces.getWorkspaceFromId(targetRoute) ??
+        win.gZenWorkspaces
+          .getWorkspaces(true)
+          .find(space => space.uuid === targetRoute);
+      return workspace?.containerTabId ?? null;
+    } catch (err) {
+      console.error("[ZenSpaceRouting]: Error routing the startup URI:", err);
+      return null;
+    }
+  }
+
+  /**
+   * The space an externally supplied startup URI is configured to land in, or
+   * null when Firefox's usual handling should be left alone.
+   *
+   * @param {Window} win - The browser window receiving the startup URI
+   * @returns {string|null} The destination space's id, or null
+   */
+  #startupExternalRoute(win) {
+    const extraOptions = win.arguments?.[1];
+    if (
+      !(extraOptions instanceof Ci.nsIPropertyBag2) ||
+      !extraOptions.hasKey("fromExternal") ||
+      !extraOptions.getPropertyAsBool("fromExternal")
+    ) {
+      return null;
+    }
+
+    // Resolved synchronously for anything but the homepage, which is never
+    // an external link.
+    const uriString = win.gBrowserInit.uriToLoadPromise;
+    if (typeof uriString != "string") {
+      return null;
+    }
+
+    let targetRoute = this.routeUri(uriString, { fromExternal: true });
+    if (targetRoute === "first-space") {
+      const workspaces = win.gZenWorkspaces.getWorkspaces();
+      targetRoute = (workspaces.length ? workspaces : win.gZenWorkspaces.getWorkspaces(true))[0]?.uuid;
+    }
+    return targetRoute === "most-recent-space" ? null : targetRoute;
+  }
+
+  /**
+   * Moves the initial tab into the space its rule points at, when the startup
+   * URI came from another application.
+   *
+   * @param {Element} initialTab - The tab the startup URI was loaded into
+   * @param {Window} win - The browser window receiving the startup URI
+   * @param {string} [explicitWorkspaceId] - Resolved --space destination
+   * @returns {Promise<void>} Resolved once the tab has been routed
+   */
+  async routeStartupTab(initialTab, win, explicitWorkspaceId) {
+    const targetRoute = explicitWorkspaceId || this.#startupExternalRoute(win);
+    if (!targetRoute) {
+      return;
+    }
+
+    await this.#routeToWorkspace(targetRoute, initialTab, false, win);
+  }
+
+  /**
    * Callback that will be executed from tabbrowser.js
    *
    * @param {string} uriString - The URI as a string
@@ -338,10 +414,10 @@ class nsZenSpaceRoutingManager {
       return nsZenSpaceRoutingManager.SKIP_TYPE.SKIPPED_TAB;
     }
 
-    // addTab() is being called when the session restores.
-    // To avoid automatically routing these tabs,
-    // a check if the restore is already complete is needed
-    if (!win.gZenStartup.isReady) {
+    // addTab() is called for restored tabs before startup is ready, but an
+    // external link can also arrive during that window. Keep restored tabs in
+    // their saved spaces while still honoring routing for external links.
+    if (!win.gZenStartup.isReady && !options.fromExternal) {
       return nsZenSpaceRoutingManager.SKIP_TYPE.RESTORED_TAB;
     }
 
@@ -497,8 +573,9 @@ class nsZenSpaceRoutingManager {
    * @param {nsIURI} uri - The external URL
    * @param {Window|Promise<Window>} windowOrPromise - The initial browser window
    * @param {Function} openInWindow - Synchronous native open callback
+   * @param {string} [workspaceMatch] - Explicit --space name or UUID
    */
-  async openExternalURI(uri, windowOrPromise, openInWindow) {
+  async openExternalURI(uri, windowOrPromise, openInWindow, workspaceMatch) {
     let win;
     let opened = false;
     const openOnce = (targetWindow, decision) => {
@@ -552,7 +629,14 @@ class nsZenSpaceRoutingManager {
         };
         poll();
       });
-      const decision = await this.resolveExternalURI(uri.spec, win);
+      // An explicit command-line destination takes precedence over rules and
+      // classification. Resolve after startup so cold launches have Spaces.
+      const explicitWorkspace = workspaceMatch
+        ? win.gZenWorkspaces.resolveWorkspaceFromCLIString(workspaceMatch)
+        : null;
+      const decision = explicitWorkspace
+        ? { reason: "command-line", spaceId: explicitWorkspace.uuid }
+        : await this.resolveExternalURI(uri.spec, win);
       if (win.closed) {
         return;
       }
@@ -617,8 +701,8 @@ class nsZenSpaceRoutingManager {
       case "regex": {
         let unmodifiedReference = route.reference;
         try {
-          // Use unmodified parameters for the regex test
-          const regex = new RegExp(unmodifiedReference);
+          // Case insensitive match (see gh-15835)
+          const regex = new RegExp(unmodifiedReference, "i");
           if (regex.test(uriString)) {
             return true;
           }

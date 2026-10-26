@@ -206,7 +206,7 @@ def incremental_disk_baseline(ctx: Context, chain: Dict[str, Any], reserve: int,
     config = ctx.root / "engine" / "mozconfig"
     if not objects or not config.is_file():
         raise DevError("A reduced reserve requires an existing native build")
-    roots = ("src", "prefs", "configs", "surfer.json", ".nvmrc", ".rust-toolchain",
+    roots = ("src", "prefs", "configs", "surfer.json", ".nvmrc", ".rust-toolchain", "rust-toolchain.toml", "rust-toolchain",
              ".python-version", "package.json", "package-lock.json")
     ui_suffixes = (".js", ".mjs", ".css", ".ftl", ".html", ".xhtml", ".svg")
     cocoa_targets = {"widget/cocoa/nsCocoaWindow.h", "widget/cocoa/nsCocoaWindow.mm",

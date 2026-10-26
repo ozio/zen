@@ -465,6 +465,16 @@ export class ZenLibrary extends MozLitElement {
    */
   static async animateProgress(target) {
     const lib = this.getInstance();
+
+    const settled =
+      target === lib.#target &&
+      target === lib.openProgress &&
+      lib.#isOpen === (target === 1) &&
+      !lib.#springControls &&
+      !lib.hasAttribute("transitioning");
+    if (settled) {
+      return;
+    }
     const generation = ++lib.#motionGeneration;
     lib.#target = target;
     lib.#stopSpring();
@@ -766,35 +776,72 @@ export class ZenLibrary extends MozLitElement {
     return this;
   }
 
+  static SIDEBAR_COMMANDS = [
+    "cmd_zenToggleSidebar",
+    "cmd_zenToggleTabsOnRight",
+  ];
+
+  #disabledCommands = [];
+
+  /** Turns those commands off for as long as the library is up. */
+  #holdSidebarCommands() {
+    this.#disabledCommands = [];
+    for (const id of ZenLibrary.SIDEBAR_COMMANDS) {
+      const command = document.getElementById(id);
+      if (command && !command.hasAttribute("disabled")) {
+        command.setAttribute("disabled", "true");
+        this.#disabledCommands.push(command);
+      }
+    }
+  }
+
+  /** Hands them back once the library is out of the way. */
+  #releaseSidebarCommands() {
+    for (const command of this.#disabledCommands) {
+      command.removeAttribute("disabled");
+    }
+    this.#disabledCommands = [];
+  }
+
   /**
    * Internal callback for whenever the
    * library is about to be opened.
    */
   #onOpenInit() {
-    if (this.#initialized) {
-      return;
-    }
-    this.#initialized = true;
-    this.isHidden = false;
-
-    gURLBar.view.close();
-
-    this.#cancelIdleCleanup();
-    if (!this.#contentMounted) {
-      this.#contentMounted = true;
-      this.requestUpdate();
-    }
-
-    this.setAttribute("open", "true");
     this.#tellSection("onLibraryOpening");
-    document.addEventListener("keydown", this, true);
-    window.addEventListener("TabOpen", this);
+    if (!this.#initialized) {
+      this.#initialized = true;
+      this.isHidden = false;
 
-    this.#attachWrapperToSwipe();
-    window.gZenWorkspaces._swipeManager?.attachWorkspaceSwipeGestures(this);
-    this.#resizeObserver.observe(this);
-    ZenLibraryWidget.attachLibrary(this);
-    this.#refreshToolboxWidth();
+      gURLBar.view.close();
+
+      this.#cancelIdleCleanup();
+      if (!this.#contentMounted) {
+        this.#contentMounted = true;
+        this.requestUpdate();
+      }
+
+      this.setAttribute("open", "true");
+      this.#holdSidebarCommands();
+      document.addEventListener("keydown", this, true);
+      window.addEventListener("TabOpen", this);
+
+      this.#attachWrapperToSwipe();
+      window.gZenWorkspaces._swipeManager?.attachWorkspaceSwipeGestures(this);
+      this.#resizeObserver.observe(this);
+      ZenLibraryWidget.attachLibrary(this);
+      this.#refreshToolboxWidth();
+    }
+    this.#focusActiveSection();
+  }
+
+  async #focusActiveSection() {
+    // Mounting is asynchronous; a newer swipe or close owns focus afterward.
+    const generation = this.#motionGeneration;
+    await this.updateComplete;
+    if (this.#initialized && generation === this.#motionGeneration) {
+      this.#tellSection("onLibraryOpened");
+    }
   }
 
   /**
@@ -810,6 +857,7 @@ export class ZenLibrary extends MozLitElement {
     }
     this.#initialized = false;
     this.removeAttribute("open");
+    this.#releaseSidebarCommands();
     for (const tab of this.querySelectorAll(".zen-library-tab[animate]")) {
       tab.removeAttribute("animate");
     }

@@ -6,8 +6,10 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   canDrawThumbnail: "moz-src:///zen/library/ZenLibraryUtils.sys.mjs",
   blockedText: "moz-src:///zen/library/ZenLibraryUtils.sys.mjs",
+  canRetry: "moz-src:///zen/library/ZenLibraryUtils.sys.mjs",
   confirmUnblock: "moz-src:///zen/library/ZenLibraryUtils.sys.mjs",
   isBlocked: "moz-src:///zen/library/ZenLibraryUtils.sys.mjs",
+  retryDownload: "moz-src:///zen/library/ZenLibraryUtils.sys.mjs",
   transferText: "moz-src:///zen/library/ZenLibraryUtils.sys.mjs",
   DownloadsCommon:
     "moz-src:///browser/components/downloads/DownloadsCommon.sys.mjs",
@@ -71,7 +73,8 @@ class ZenLibraryDownloadStack {
     this.#list.addEventListener("mouseleave", this);
     this.#window.addEventListener("unload", this, { once: true });
 
-    this.#data = lazy.DownloadsCommon.getData(this.#window, true);
+    // This session's downloads, the way the downloads panel takes them.
+    this.#data = lazy.DownloadsCommon.getData(this.#window);
     this.#data.addView(this);
   }
 
@@ -127,7 +130,10 @@ class ZenLibraryDownloadStack {
   }
 
   #open() {
-    if (this.#footButtons.hasAttribute("zen-library-stack-open")) {
+    if (
+      !this.#downloads.length ||
+      this.#footButtons.hasAttribute("zen-library-stack-open")
+    ) {
       return;
     }
     this.#aimBadge();
@@ -233,11 +239,39 @@ class ZenLibraryDownloadStack {
       );
       const action = entry.querySelector(".zen-library-download-action");
       action.addEventListener("click", event => event.stopPropagation());
-      action.addEventListener("command", () =>
-        this.#cancelDownload(entry.download)
-      );
+      action.addEventListener("command", () => this.#rowAction(entry.download));
     }
     return list;
+  }
+
+  /**
+   * @param {object} download - Any download
+   * @returns {boolean} Whether its file is there to be shown
+   */
+  #hasFile(download) {
+    return (
+      !!download?.succeeded && !download.deleted && !!download.target?.exists
+    );
+  }
+
+  /**
+   * What the button of an entry does.
+   *
+   * @param {object} download - The entry's download
+   */
+  #rowAction(download) {
+    if (!download) {
+      return;
+    }
+    if (!download.stopped) {
+      this.#cancelDownload(download);
+      return;
+    }
+    if (this.#hasFile(download)) {
+      lazy.DownloadsCommon.showDownloadedFile(
+        new lazy.FileUtils.File(download.target.path)
+      );
+    }
   }
 
   /**
@@ -291,13 +325,19 @@ class ZenLibraryDownloadStack {
     }
     if (download.succeeded) {
       lazy.DownloadsCommon.openDownload(download).catch(console.error);
-    } else if (download.source?.url) {
+      return;
+    }
+    if (lazy.canRetry(download)) {
+      lazy.retryDownload(download, this.#window);
+      return;
+    }
+    if (download.source?.url) {
       this.#window.openTrustedLinkIn(download.source.url, "tab");
     }
   }
 
   #onDragStart(event, download) {
-    if (!download?.succeeded || download.deleted || !download.target?.exists) {
+    if (!this.#hasFile(download)) {
       event.preventDefault();
       return;
     }
@@ -342,6 +382,15 @@ class ZenLibraryDownloadStack {
       }
       entry.toggleAttribute("downloading", !download.stopped);
       entry.toggleAttribute("open-when-done", this.#opensWhenDone(download));
+      // The one button an entry has calls off a download on its way in, and
+      // shows the file once it is here.
+      entry.toggleAttribute("show-in-folder", this.#hasFile(download));
+      this.#window.document.l10n.setAttributes(
+        entry.querySelector(".zen-library-download-action"),
+        download.stopped
+          ? "library-downloads-show-tooltip"
+          : "library-downloads-cancel-tooltip"
+      );
     });
     this.#window
       .promiseDocumentFlushed(() => this.#list.getBoundingClientRect().height)
@@ -505,7 +554,7 @@ class ZenLibraryDownloadStack {
   #statusText(download) {
     const strings = lazy.DownloadsCommon.strings;
     if (!download.stopped) {
-      return lazy.transferText(download);
+      return lazy.transferText(download, { speed: true });
     }
     if (download.deleted) {
       return strings.fileDeleted;
@@ -561,6 +610,11 @@ class ZenLibraryDownloadStack {
         l10nId: "downloads-cmd-resume",
         onClick: () => download.start?.().catch(() => {}),
       });
+    } else if (lazy.canRetry(download)) {
+      items.push({
+        l10nId: "library-downloads-menu-retry",
+        onClick: () => lazy.retryDownload(download, this.#window),
+      });
     }
     if (fileExists) {
       items.push({
@@ -597,6 +651,12 @@ class ZenLibraryDownloadStack {
       items.push({
         l10nId: "downloads-cmd-remove-from-history",
         onClick: () => C.deleteDownload(download).catch(console.error),
+      });
+    }
+    if (this.#data.canRemoveFinished) {
+      items.push({
+        l10nId: "library-downloads-menu-clear-preview",
+        onClick: () => this.#data.removeFinished(),
       });
     }
     return items;

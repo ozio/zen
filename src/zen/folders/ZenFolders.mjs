@@ -121,7 +121,8 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
         return;
       }
       this.#lastFolderContextMenu = folder;
-      gZenLiveFoldersUI.buildContextMenu(folder);
+      // Created at delayed startup, so it may not exist for a very early menu.
+      window.gZenLiveFoldersUI?.buildContextMenu(folder);
 
       const newSubfolderItem = document.getElementById(
         "context_zenFolderNewSubfolder"
@@ -355,7 +356,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
       if (collapsedRoot) {
         this.#queueCollapsedRelayout(collapsedRoot);
       }
-    } else if (group.collapsed && !group.isLiveFolder) {
+    } else if (group.collapsed && !group.isLiveFolder && !group.creating) {
       group.collapsed = group.hasAttribute("has-active");
     }
   }
@@ -499,7 +500,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     }
 
     await this.animateCollapse(group);
-    group.dispatchEvent(new CustomEvent("ZenFolderAnimationFinished"));
+    this.#finishedAnimating(group);
   }
 
   #queueCollapsedRelayout(group) {
@@ -536,7 +537,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
       if (container.separatorElement) {
         height -= container.separatorElement.getBoundingClientRect().height;
       }
-      groupStart.style.marginTop = `${-(height + 4)}px`;
+      groupStart.style.marginTop = `${-(height + this.collapsedMarginOffset)}px`;
       if (wasHidden) {
         container.setAttribute("hidden", true);
       }
@@ -550,7 +551,28 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     }
 
     await this.animateExpand(group);
-    group.dispatchEvent(new CustomEvent("ZenFolderAnimationFinished"));
+    this.#finishedAnimating(group);
+  }
+
+  #finishedAnimating(group) {
+    group.dispatchEvent(
+      new CustomEvent("TabGroupAnimationComplete", { bubbles: true })
+    );
+  }
+
+  #animationFinished(folder) {
+    return new Promise(resolve => {
+      folder.addEventListener(
+        "TabGroupAnimationComplete",
+        function listener(event) {
+          if (event.target !== folder) {
+            return;
+          }
+          folder.removeEventListener("TabGroupAnimationComplete", listener);
+          resolve();
+        }
+      );
+    });
   }
 
   #onNewFolder(event) {
@@ -724,6 +746,10 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     tabs = [emptyTab, ...filteredTabs];
 
     const folder = this._createFolderNode(options);
+    emptyTab.setAttribute(
+      "zen-workspace-id",
+      folder.getAttribute("zen-workspace-id")
+    );
 
     if (options.insertAfter) {
       options.insertAfter.after(folder);
@@ -732,7 +758,9 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     }
     gZenVerticalTabsManager.animateItemOpen(folder);
 
+    folder.creating = true;
     folder.addTabs(tabs);
+    folder.creating = false;
 
     // Fixes bug1953801 and bug1954689
     // Ensure that the tab state cache is updated immediately after creating
@@ -777,17 +805,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
       options.workspaceId || gZenWorkspaces.activeWorkspace
     );
 
-    // note: We set if the folder is collapsed some time after creation.
-    //   we do this to ensure marginBottom is set correctly in the case
-    //   that we want it to initially be collapsed.
-    setTimeout(
-      // eslint-disable-next-line no-shadow
-      folder => {
-        folder.collapsed = !!options.collapsed;
-      },
-      0,
-      folder
-    );
+    folder.collapsed = !!options.collapsed;
     return folder;
   }
 
@@ -1787,7 +1805,10 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
         {
           marginTop: [
             startMargin,
-            -(collapsedHeight + 4 * (selectedTabs.length === 0 ? 1 : 0)),
+            -(
+              collapsedHeight +
+              this.collapsedMarginOffset * (selectedTabs.length === 0 ? 1 : 0)
+            ),
           ],
         },
         { duration, ease: "easeInOut" }
@@ -1808,6 +1829,10 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     }
   }
 
+  get collapsedMarginOffset() {
+    return 4;
+  }
+
   async animateExpand(group) {
     this.cancelPopupTimer();
 
@@ -1815,10 +1840,24 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     const itemsToHide = [];
 
     const tabsContainer = group.groupContainer;
+    const wasHidden = tabsContainer.hasAttribute("hidden");
     tabsContainer.removeAttribute("hidden");
     tabsContainer.style.overflowY = "hidden";
 
     const groupStart = group.groupStartElement;
+    if (
+      wasHidden &&
+      -(parseFloat(groupStart.style.marginTop) || 0) <=
+        this.collapsedMarginOffset
+    ) {
+      // A folder built already collapsed, like the library's copy of one,
+      // never had its tabs shifted up, so they would pop in without sliding.
+      let height = tabsContainer.getBoundingClientRect().height;
+      if (tabsContainer.separatorElement) {
+        height -= tabsContainer.separatorElement.getBoundingClientRect().height;
+      }
+      groupStart.style.marginTop = `${-(height + this.collapsedMarginOffset)}px`;
+    }
     const itemsToShow = this.#normalizeGroupItems(group.childGroupsAndTabs);
     const activeFolders = group.childActiveGroups;
 
@@ -1956,7 +1995,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
         tabsContainer.offsetHeight;
         tabsContainer.setAttribute("hidden", true);
         const collapsedHeight = this.#calculateHeightShift(tabsContainer, []);
-        groupStart.style.marginTop = `${-(collapsedHeight + 4)}px`;
+        groupStart.style.marginTop = `${-(collapsedHeight + this.collapsedMarginOffset)}px`;
       };
 
       const groupStart = folder.groupStartElement;
@@ -1968,7 +2007,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
         ...this.#createAnimation(
           groupStart,
           {
-            marginTop: -(collapsedHeight + 4),
+            marginTop: -(collapsedHeight + this.collapsedMarginOffset),
           },
           { duration: this.#folderAnimationDuration, ease: "easeInOut" },
           afterAnimate
@@ -2019,7 +2058,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
               tabsContainer,
               []
             );
-            groupStart.style.marginTop = `${-(collapsedHeight + 4)}px`;
+            groupStart.style.marginTop = `${-(collapsedHeight + this.collapsedMarginOffset)}px`;
           };
 
           const groupStart = folder.groupStartElement;
@@ -2031,7 +2070,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
             ...this.#createAnimation(
               groupStart,
               {
-                marginTop: -(collapsedHeight + 4),
+                marginTop: -(collapsedHeight + this.collapsedMarginOffset),
               },
               { duration: this.#folderAnimationDuration, ease: "easeInOut" },
               afterAnimate
@@ -2317,7 +2356,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
     this.#createAnimation(
       groupStart,
       {
-        marginTop: expand ? 0 : -(heightContainer + 4),
+        marginTop: expand ? 0 : -(heightContainer + this.collapsedMarginOffset),
       },
       { duration: this.#folderAnimationDuration, ease: "easeInOut" }
     );
@@ -2389,11 +2428,7 @@ class nsZenFolders extends nsZenDOMOperatedFeature {
       if (!folder.isConnected || folder.collapsed === collapsed) {
         continue;
       }
-      const finished = new Promise(resolve =>
-        folder.addEventListener("ZenFolderAnimationFinished", resolve, {
-          once: true,
-        })
-      );
+      const finished = this.#animationFinished(folder);
       folder.collapsed = collapsed;
       await finished;
     }
