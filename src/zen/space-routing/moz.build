@@ -7,6 +7,6 @@ EXTRA_JS_MODULES.zen.spacerouting += [
     "ZenSpaceRoutingAISettings.mjs",
     "ZenSpaceRoutingDialog.mjs",
     "ZenSpaceRoutingManager.sys.mjs",
-    "ZenSpaceRoutingPolicy.sys.mjs",
     "ZenSpaceRoutingNavigation.sys.mjs",
+    "ZenSpaceRoutingPolicy.sys.mjs",
 ]
