@@ -411,7 +411,7 @@ test("mount completion after closing cannot focus the hidden section", async () 
   await s.Library.animateProgress(0);
   s.complete();
   mounted();
-  await Promise.resolve();
+  await new Promise(setImmediate);
   assert.equal(focuses, 0);
   assert.ok(!s.lib.hasAttribute("open"));
 });
