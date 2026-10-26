@@ -1,8 +1,7 @@
 diff --git a/widget/cocoa/nsCocoaWindow.h b/widget/cocoa/nsCocoaWindow.h
-index 01f93663..93c6befe 100644
 --- a/widget/cocoa/nsCocoaWindow.h
 +++ b/widget/cocoa/nsCocoaWindow.h
-@@ -277,6 +277,10 @@ class nsCocoaWindow final : public nsIWidget {
+@@ -281,6 +281,10 @@
        double aDeltaY, double aDeltaZ, nsIWidget::NativeModifiers aModifierFlags,
        uint32_t aAdditionalFlags,
        nsISynthesizedEventCallback* aCallback) override;
@@ -13,10 +12,11 @@ index 01f93663..93c6befe 100644
    nsresult SynthesizeNativeTouchPoint(
        uint32_t aPointerId, TouchPointerState aPointerState,
        LayoutDeviceIntPoint aPoint, double aPointerPressure,
-@@ -318,6 +322,27 @@ class nsCocoaWindow final : public nsIWidget {
-   void DispatchAPZWheelInputEvent(mozilla::InputData& aEvent);
+@@ -323,6 +327,27 @@
    nsEventStatus DispatchAPZInputEvent(mozilla::InputData& aEvent);
 
+   void PerformHapticFeedback(mozilla::HapticFeedbackType aType) override;
++
 +  // Called before AppKit hit-testing, so a moving PiP retains its gesture.
 +  MOZ_CAN_RUN_SCRIPT_BOUNDARY static bool RoutePiPTrackpadEvent(
 +      NSEvent* aEvent, bool aGlobal = false);
@@ -37,11 +37,10 @@ index 01f93663..93c6befe 100644
 +  MOZ_CAN_RUN_SCRIPT_BOUNDARY static void FinishPiPMouseDrag(NSEvent* aEvent);
 +  MOZ_CAN_RUN_SCRIPT_BOUNDARY static void CancelPiPInput();
 +  void FinishPiPTrackpadCursor(bool aRelocate);
-+
+
    void DispatchDoubleTapGesture(mozilla::TimeStamp aEventTimeStamp,
                                  LayoutDeviceIntPoint aScreenPosition,
-                                 mozilla::Modifiers aModifiers);
-@@ -462,6 +487,10 @@ class nsCocoaWindow final : public nsIWidget {
+@@ -468,6 +493,10 @@
    void SetHideTitlebarSeparator(bool) override;
    bool IsMacTitlebarDirectionRTL() override;
    void SetCustomTitlebar(bool) override;
@@ -52,7 +51,7 @@ index 01f93663..93c6befe 100644
    void UpdateThemeGeometries(
        const nsTArray<ThemeGeometry>& aThemeGeometries) override;
    void LockAspectRatio(bool aShouldLock) override;
-@@ -675,6 +704,9 @@ class nsCocoaWindow final : public nsIWidget {
+@@ -681,6 +710,9 @@
    // show (e.g. a window created by detaching a tab from a fullscreen window).
    bool mIsInitialFullscreenSuppressed = false;
    bool mWasShown = false;

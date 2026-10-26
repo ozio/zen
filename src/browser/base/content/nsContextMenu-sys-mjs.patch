@@ -1,7 +1,52 @@
 diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
 --- a/browser/base/content/nsContextMenu.sys.mjs
 +++ b/browser/base/content/nsContextMenu.sys.mjs
-@@ -2684,6 +2684,44 @@
+@@ -35,6 +35,8 @@
+   TranslationsUtils:
+     "chrome://global/content/translations/TranslationsUtils.mjs",
+   WebsiteFilter: "resource:///modules/policies/WebsiteFilter.sys.mjs",
++  ZenPageTranslations:
++    "chrome://browser/content/translations/ZenPageTranslations.sys.mjs",
+ });
+
+ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+@@ -124,6 +126,9 @@
+    * @type {Promise<{sourceLanguage: string, targetLanguage: string}>}
+    */
+   #translationsLangPairPromise;
++
++  /** The full-page translation item belongs to this menu and its document. */
++  #pageTranslations = null;
+
+   /**
+    * The value of the `main-context-menu-new-feature-badge` l10n string. Fetched
+@@ -365,6 +370,7 @@
+   } // setContext
+
+   hiding(aXulMenu) {
++    this.#pageTranslations?.destroy();
+     if (this.actor) {
+       this.actor.hiding();
+     }
+@@ -408,6 +414,9 @@
+     this.initPasswordControlItems();
+     this.initTextFragmentItems();
+     this.pdfjsContextMenu.initItems();
++
++    this.showItem("context-zenSplitLink", this.onLink && !this.onMailtoLink && !this.onTelLink);
++    this.showItem("context-zenOpenLinkInGlance", this.onLink && !this.onMailtoLink && !this.onTelLink);
+
+     this.showHideSeparators(aXulMenu);
+     if (!aXulMenu.showHideSeparators) {
+@@ -933,6 +942,7 @@
+
+     this.showAndFormatSearchContextItem();
+     this.showTranslateSelectionItem();
++    this.showTranslatePageItem();
+     lazy.GenAI.buildAskChatMenu(document.getElementById("context-ask-chat"), {
+       browser: this.browser,
+       selectionInfo: this.selectionInfo,
+@@ -2684,6 +2694,44 @@
      lazy.AIWindow.createAITab(this.window, [this.browser.currentURI.spec]);
    }
 
